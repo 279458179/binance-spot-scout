@@ -71,6 +71,36 @@ export interface BookTicker {
   askQty: number;
 }
 
+/**
+ * Raw frame of the `bookTicker` websocket stream.
+ *
+ * Field names are Binance's own single-letter keys and are parsed once, at the
+ * edge, by `useTicker`. Everything downstream sees normalized numbers, so the
+ * rest of the UI never has to know about string-encoded prices.
+ */
+export interface TickerPayload {
+  /** Update id — useful for diagnosing out-of-order frames. */
+  u: number;
+  /** Symbol, e.g. `BTCUSDT`. */
+  s: string;
+  /** Best bid price, as a decimal string. */
+  b: string;
+  /** Best bid quantity, as a decimal string. */
+  B: string;
+  /** Best ask price, as a decimal string. */
+  a: string;
+  /** Best ask quantity, as a decimal string. */
+  A: string;
+}
+
+/** Normalized live quote for the symbol under watch. */
+export interface TickerSnapshot {
+  price: number;
+  updatedAt: number;
+  connected: boolean;
+  error: string | null;
+}
+
 /** A tradable USDT spot symbol after universe filtering. */
 export interface SymbolInfo {
   symbol: string;

@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 
 import { FreshnessBadge } from "@/client/components/FreshnessBadge";
 import { ScoreBreakdown } from "@/client/components/ScoreBreakdown";
+import { TargetTracker } from "@/client/components/TargetTracker";
 import { useSymbolDetail } from "@/client/hooks/useSymbolDetail";
 import { formatPrice, formatScore, formatSymbolPair } from "@/client/lib/format";
 import { STATUS_LABELS } from "@/client/lib/labels";
@@ -17,6 +18,20 @@ interface ResultCardProps {
   rescanning?: boolean;
 }
 
+/**
+ * Asks for notification permission, if the browser has not decided yet.
+ *
+ * Called from a click handler on purpose: browsers only honour the prompt
+ * during a user gesture, and the answer is irrelevant to the trade idea, so a
+ * rejection is swallowed rather than surfaced.
+ */
+function requestNotifications(): void {
+  if (typeof Notification === "undefined" || Notification.permission !== "default") {
+    return;
+  }
+  void Notification.requestPermission().catch(() => undefined);
+}
+
 /** ENTRY_NOW card: the single candidate worth a look right now. */
 export function ResultCard({
   result,
@@ -25,10 +40,12 @@ export function ResultCard({
   rescanning = false,
 }: ResultCardProps): ReactNode {
   const [tracking, setTracking] = useState(false);
-  const { detail, error, loading } = useSymbolDetail(tracking ? result.symbol : null);
+  const [showDetail, setShowDetail] = useState(false);
+  const { detail, error, loading } = useSymbolDetail(showDetail ? result.symbol : null);
 
   const blocked = stale;
   const plan = result.plan;
+  const symbol = result.symbol;
 
   return (
     <motion.section
@@ -121,37 +138,59 @@ export function ResultCard({
         </div>
       ) : null}
 
-      {tracking ? (
-        <div className="space-y-3 border-t border-white/5 pt-4">
-          <h3 className="field-label">评分拆解</h3>
-          {loading ? (
-            <p className="text-sm text-ink-400">正在读取拆解…</p>
-          ) : (
-            <ScoreBreakdown score={detail?.score ?? null} />
-          )}
-          {error !== null ? (
-            <p className="text-sm text-coral-300">{error}</p>
-          ) : null}
-          {detail !== null && detail.notes.length > 0 ? (
-            <ul className="space-y-1">
-              {detail.notes.map((note) => (
-                <li key={note} className="text-xs leading-relaxed text-ink-400">
-                  · {note}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+      {tracking && symbol !== null ? (
+        <TargetTracker
+          symbol={symbol}
+          referencePrice={plan?.referencePrice ?? result.price ?? 0}
+          targetPct={result.targetPct}
+          onStop={() => setTracking(false)}
+        />
       ) : null}
+
+      <div className="space-y-3 border-t border-white/5 pt-4">
+        <button
+          type="button"
+          onClick={() => setShowDetail((prev) => !prev)}
+          className="text-xs font-semibold text-ink-300 underline decoration-white/20 underline-offset-4"
+        >
+          {showDetail ? "收起评分拆解" : "查看评分拆解"}
+        </button>
+        {showDetail ? (
+          <div className="space-y-3">
+            {loading ? (
+              <p className="text-sm text-ink-400">正在读取拆解…</p>
+            ) : (
+              <ScoreBreakdown score={detail?.score ?? null} />
+            )}
+            {error !== null ? <p className="text-sm text-coral-300">{error}</p> : null}
+            {detail !== null && detail.notes.length > 0 ? (
+              <ul className="space-y-1">
+                {detail.notes.map((note) => (
+                  <li key={note} className="text-xs leading-relaxed text-ink-400">
+                    · {note}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
-          onClick={() => setTracking((prev) => !prev)}
+          onClick={() => {
+            if (tracking) {
+              setTracking(false);
+              return;
+            }
+            requestNotifications();
+            setTracking(true);
+          }}
           disabled={blocked}
           className="flex-1 rounded-2xl bg-mint-500 px-5 py-3 text-sm font-semibold text-night-950 transition-colors disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-ink-400"
         >
-          {tracking ? "收起拆解" : "开始追踪"}
+          {tracking ? "停止追踪" : "开始追踪"}
         </button>
         {onRescan !== undefined ? (
           <button
