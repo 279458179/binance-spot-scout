@@ -1,0 +1,147 @@
+/**
+ * Global stylesheet for the Spot Scout client.
+ *
+ * Tailwind v4 reads the design tokens from `@theme` below, so every colour used
+ * in a component has to be declared here once and is then available as a
+ * regular utility class (for example `bg-night-900`, `text-mint-400`).
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces, darkest to lightest. */
+  --color-night-950: #060a18;
+  --color-night-900: #0b1026;
+  --color-night-850: #0f1531;
+  --color-night-800: #141b3d;
+  --color-night-700: #1d2550;
+  --color-night-600: #2b3570;
+
+  /* Text. */
+  --color-ink-100: #eef1ff;
+  --color-ink-200: #d3d9f5;
+  --color-ink-300: #a9b2d8;
+  --color-ink-400: #848eb8;
+  --color-ink-500: #626b92;
+
+  /* Semantic accents. */
+  --color-mint-300: #6ff0b4;
+  --color-mint-400: #34d99a;
+  --color-mint-500: #16b57c;
+  --color-mint-950: #06251b;
+
+  --color-honey-300: #ffd479;
+  --color-honey-400: #f5b544;
+  --color-honey-950: #2a1d05;
+
+  --color-coral-300: #ff9aae;
+  --color-coral-400: #f2637f;
+  --color-coral-950: #2c0c15;
+
+  --color-iris-300: #b0a8ff;
+  --color-iris-400: #8b7ff5;
+  --color-iris-950: #16123a;
+
+  --font-sans:
+    "PingFang SC", "HarmonyOS Sans SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Menlo", "Consolas", monospace;
+
+  --radius-card: 1.25rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--color-night-950);
+    background-image:
+      radial-gradient(circle at 12% -10%, rgba(52, 217, 154, 0.14), transparent 45%),
+      radial-gradient(circle at 88% 0%, rgba(139, 127, 245, 0.16), transparent 42%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: var(--color-ink-100);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background-color: rgba(52, 217, 154, 0.32);
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-mint-400);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Frosted panel used by every card on the page. */
+  .panel {
+    border-radius: var(--radius-card);
+    border: 1px solid rgba(43, 53, 112, 0.75);
+    background-color: rgba(20, 27, 61, 0.72);
+    backdrop-filter: blur(14px);
+  }
+
+  /* Small uppercase label above a value. */
+  .field-label {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-500);
+  }
+
+  .field-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-ink-100);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 0.1875rem 0.625rem;
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+/* Numeric columns should never jitter while ticking. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
