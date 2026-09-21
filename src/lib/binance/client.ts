@@ -177,18 +177,36 @@ export class BinanceMarketClient {
     return results.flat();
   }
 
-  /** Recent candles for one symbol/interval, oldest first (as Binance sends). */
-  async klines(symbol: string, interval: Interval, limit: number): Promise<Kline[]> {
+  /**
+   * Recent candles for one symbol/interval, oldest first (as Binance sends).
+   *
+   * The optional `options` argument narrows the window server-side, which is
+   * what lets historical tooling page backwards through months of candles the
+   * 1000-bar `limit` alone cannot reach. Omitted or non-finite bounds are
+   * dropped from the query so live scan callers are unaffected.
+   */
+  async klines(
+    symbol: string,
+    interval: Interval,
+    limit: number,
+    options: { startTime?: number; endTime?: number } = {},
+  ): Promise<Kline[]> {
     const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 1_000));
+    const startTime = Number.isFinite(options.startTime) ? options.startTime : undefined;
+    const endTime = Number.isFinite(options.endTime) ? options.endTime : undefined;
     const label = `klines:${symbol}:${interval}`;
     return this.request(
       "/api/v3/klines",
-      () =>
-        new URLSearchParams({
+      () => {
+        const query = new URLSearchParams({
           symbol,
           interval,
           limit: String(safeLimit),
-        }).toString(),
+        });
+        if (startTime !== undefined) query.set("startTime", String(Math.trunc(startTime)));
+        if (endTime !== undefined) query.set("endTime", String(Math.trunc(endTime)));
+        return query.toString();
+      },
       (payload) => parseKlines(payload, label),
       label,
     );
