@@ -10,14 +10,14 @@
   "kv_namespaces": [
     {
       "binding": "SCAN_CACHE",
-      "id": "placeholder-scan-cache-id"
+      "id": "5401805e8e684cc6b7097555d626538d"
     }
   ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "spot_scout_db",
-      "database_id": "placeholder-d1-id",
+      "database_id": "bc72522f-f58b-4b22-88af-5326d7e65a53",
       "migrations_dir": "migrations"
     }
   ],

@@ -1,3 +1,4 @@
+import type { BinanceMarketClient } from "@/lib/binance";
 import type {
   BookTicker,
   Kline,
@@ -147,4 +148,134 @@ export function makeSymbolInfo(overrides: Partial<SymbolInfo> = {}): SymbolInfo 
 
 function round8(value: number): number {
   return Math.round(value * 1e8) / 1e8;
+}
+
+/** One leg of a hand-authored price path; `to` is the close of the final bar. */
+export interface SeriesSegment {
+  /** Number of candles in this leg. */
+  count: number;
+  /** Close price of the candle before the leg starts. */
+  from: number;
+  /** Close price of the leg's last candle. */
+  to: number;
+  /**
+   * Upper-wick length as a multiple of the candle body. `-1` flattens the wick
+   * onto the body, which is how a "clean" candle is authored.
+   */
+  upperWickPct?: number;
+  /** Lower-wick length, same scale as {@link upperWickPct}. */
+  lowerWickPct?: number;
+  volume?: number;
+}
+
+/** A segment list plus the newest candle's shape, for the final override. */
+export interface SeriesShape {
+  /** Close time of the newest candle, as an offset from now in ms. */
+  closeTimeOffsetMs?: number;
+  /** Volume used for the newest candle (drives volume ratio). */
+  finalVolume?: number;
+}
+
+/**
+ * Builds an explicit OHLCV series from price legs. Unlike {@link makeKlines}
+ * this never derives history from a single close, so callers can author shapes
+ * the indicators actually notice: pullbacks, spikes, and reclaims.
+ */
+export function makeSeries(
+  interval: string,
+  segments: readonly SeriesSegment[],
+  shape: SeriesShape = {},
+): Kline[] {
+  const step = INTERVAL_MS[interval] ?? MINUTE;
+  const total = segments.reduce((sum, segment) => sum + segment.count, 0);
+  const now = Date.now();
+  const bars: Array<Omit<Kline, "openTime" | "closeTime">> = [];
+
+  let previousClose = segments[0]?.from ?? 0;
+  let index = 0;
+
+  for (const segment of segments) {
+    const upperWickPct = segment.upperWickPct ?? 0.1;
+    const lowerWickPct = segment.lowerWickPct ?? 0.1;
+    const volume = segment.volume ?? 1_000;
+
+    for (let i = 1; i <= segment.count; i += 1) {
+      const progress = i / segment.count;
+      const close = previousClose + (segment.to - previousClose) * progress;
+      const open = index === 0 ? segment.from : previousClose;
+      const isLast = index === total - 1;
+      const bodyTop = Math.max(open, close);
+      const bodyBottom = Math.min(open, close);
+      const bodyRange = Math.max(bodyTop - bodyBottom, close * 0.0001);
+      const high = isLast
+        ? bodyTop + bodyRange * 0.05
+        : bodyTop + bodyRange * (1 + upperWickPct);
+      const low = bodyBottom - bodyRange * (1 + lowerWickPct);
+      const barVolume = isLast && shape.finalVolume !== undefined ? shape.finalVolume : volume;
+
+      bars.push({
+        open: round8(open),
+        high: round8(high),
+        low: round8(low),
+        close: round8(close),
+        volume: barVolume,
+        quoteVolume: barVolume * close,
+        trades: 100,
+        takerBuyBase: barVolume / 2,
+        takerBuyQuote: (barVolume / 2) * close,
+      });
+
+      previousClose = close;
+      index += 1;
+    }
+  }
+
+  return bars.map((bar, barIndex) => {
+    const isLast = barIndex === total - 1;
+    const closeTime =
+      now - (total - 1 - barIndex) * step + (isLast ? (shape.closeTimeOffsetMs ?? -MINUTE) : 0);
+    return { ...bar, openTime: closeTime - step, closeTime };
+  });
+}
+
+/** Everything the scanner reads from the market-data client, pre-baked. */
+export interface FakeClientData {
+  symbols: readonly SymbolInfo[];
+  /** Market-wide tickers, returned when `ticker24h()` is called with no args. */
+  tickers: readonly Ticker24h[];
+  books: readonly BookTicker[];
+  /** Klines keyed by `${symbol}|${interval}`. */
+  klines: Readonly<Record<string, readonly Kline[]>>;
+  /** Per-symbol ticker tweaks merged over the market-wide entry. */
+  tickerOverrides?: Readonly<Record<string, Partial<Ticker24h>>>;
+}
+
+/** A stand-in for {@link BinanceMarketClient} that serves the baked data above. */
+export function makeFakeClient(data: FakeClientData): BinanceMarketClient {
+  const tickerBySymbol = new Map<string, Ticker24h>();
+  for (const ticker of data.tickers) {
+    const override = data.tickerOverrides?.[ticker.symbol];
+    tickerBySymbol.set(ticker.symbol, override ? { ...ticker, ...override } : ticker);
+  }
+
+  return {
+    async exchangeInfo() {
+      return [...data.symbols];
+    },
+    async ticker24h(symbols?: readonly string[]) {
+      if (symbols === undefined) return [...tickerBySymbol.values()];
+      return symbols.flatMap((symbol) => {
+        const ticker = tickerBySymbol.get(symbol);
+        return ticker ? [ticker] : [];
+      });
+    },
+    async bookTicker(symbols: readonly string[]) {
+      if (symbols.length === 0) return [];
+      const wanted = new Set(symbols);
+      return data.books.filter((book) => wanted.has(book.symbol));
+    },
+    async klines(symbol: string, interval: string) {
+      return [...(data.klines[`${symbol}|${interval}`] ?? [])];
+    },
+  } as unknown as BinanceMarketClient;
 }
