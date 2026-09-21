@@ -438,7 +438,7 @@ describe("market regime and total", () => {
   it("never lets a penalty push the total below 0", () => {
     const score = scoreCandidate(
       makeScoreInput({
-        primary: {
+        primary: makeMetrics({
           rsi14: 88,
           distanceFromEma21Atr: -3.5,
           upperWickRatio: 0.6,
@@ -446,7 +446,7 @@ describe("market regime and total", () => {
           volumeRatio: 0.2,
           close: 96,
           vwap: 99,
-        },
+        }),
         pattern: makeNoPattern(),
         marketRegimePoints: -5,
         lastCandleMovePct: 9,

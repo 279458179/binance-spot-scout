@@ -93,7 +93,7 @@ export function buildLiquidityCandidates(
  */
 export function selectTechnicalScanSet(
   candidates: readonly LiquidityCandidate[],
-  limit = SCAN_CONFIG.universeSize,
+  limit: number = SCAN_CONFIG.universeSize,
 ): LiquidityCandidate[] {
   return candidates.filter((candidate) => isSpreadTradable(candidate.spreadPct)).slice(0, limit);
 }
