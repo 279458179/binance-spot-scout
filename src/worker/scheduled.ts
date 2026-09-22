@@ -9,7 +9,7 @@ import { scanMarket } from "./services/scan";
  */
 export async function scheduled(_event: unknown, env: Env, _ctx: unknown): Promise<void> {
   try {
-    const payload = await scanMarket();
+    const payload = await scanMarket(env.BINANCE_BASE_URLS);
     await writeLatestScan(env.SCAN_CACHE, payload);
     await insertScan(env.DB, payload);
   } catch (error) {

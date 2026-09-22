@@ -14,7 +14,7 @@ latestRoute.get("/", async (c) => {
     return c.json(payload);
   }
 
-  const fresh = await scanMarket();
+  const fresh = await scanMarket(c.env.BINANCE_BASE_URLS);
   await writeLatestScan(c.env.SCAN_CACHE, fresh);
   const payload: ScanPayload = { ...fresh, cached: false };
   return c.json(payload);

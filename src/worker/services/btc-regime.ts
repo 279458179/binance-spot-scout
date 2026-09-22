@@ -8,13 +8,14 @@
  */
 
 import { INTERVALS } from "@/config/strategy";
-import { createBinanceMarketClient } from "@/lib/binance";
 import { readBtcRegime, writeBtcRegime } from "@/lib/cache";
 import { buildIntervalMetrics } from "@/lib/indicators/metrics";
 import { assessMarketRegime } from "@/strategy";
 
 import type { BtcRegimeSnapshot } from "@/lib/cache";
 import type { Kline } from "@/shared/types";
+
+import { createMarketClient } from "./market-client";
 
 const BTC_SYMBOL = "BTCUSDT";
 const REGIME_KLINE_LIMIT = 200;
@@ -56,7 +57,10 @@ function neutralSnapshot(reasons: readonly string[]): BtcRegimeSnapshot {
  * Never throws: a Binance outage degrades to a neutral regime so the rest of
  * the request can still render instead of failing outright.
  */
-export async function resolveBtcRegime(kv: KVNamespace): Promise<BtcRegimeSnapshot> {
+export async function resolveBtcRegime(
+  kv: KVNamespace,
+  baseUrlsVar?: string,
+): Promise<BtcRegimeSnapshot> {
   const cached = await readBtcRegime(kv);
 
   if (cached !== null) {
@@ -64,7 +68,7 @@ export async function resolveBtcRegime(kv: KVNamespace): Promise<BtcRegimeSnapsh
   }
 
   try {
-    const client = createBinanceMarketClient();
+    const client = createMarketClient(baseUrlsVar);
     const [trendKlines, primaryKlines] = await Promise.all([
       client.klines(BTC_SYMBOL, INTERVALS.trend, REGIME_KLINE_LIMIT),
       client.klines(BTC_SYMBOL, INTERVALS.primary, REGIME_KLINE_LIMIT),

@@ -19,7 +19,7 @@ scanRoute.post("/", async (c) => {
     }
   }
 
-  const fresh = await scanMarket();
+  const fresh = await scanMarket(c.env.BINANCE_BASE_URLS);
   await writeLatestScan(c.env.SCAN_CACHE, fresh);
 
   try {

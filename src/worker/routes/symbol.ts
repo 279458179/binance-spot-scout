@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { INTERVALS, SCAN_CONFIG } from "@/config/strategy";
-import { createBinanceMarketClient, spreadPct } from "@/lib/binance";
+import { spreadPct } from "@/lib/binance";
 import { buildIntervalMetrics } from "@/lib/indicators/metrics";
 import type { SymbolDetail } from "@/shared/types";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/strategy";
 import type { Env } from "../env";
 import { resolveBtcRegime } from "../services/btc-regime";
+import { createMarketClient } from "../services/market-client";
 import { buildApiError } from "./api-error";
 
 /** Symbols accepted by the detail route, e.g. BTCUSDT. */
@@ -58,7 +59,7 @@ symbolRoute.get("/:symbol", async (c) => {
   }
 
   const now = Date.now();
-  const client = createBinanceMarketClient();
+  const client = createMarketClient(c.env.BINANCE_BASE_URLS);
   const [klines5m, klines15m, klines1h, klines4h, tickers, books, regime] = await Promise.all([
     client.klines(raw, INTERVALS.confirmation, SCAN_CONFIG.klineLimit),
     client.klines(raw, INTERVALS.primary, SCAN_CONFIG.klineLimit),
@@ -66,7 +67,7 @@ symbolRoute.get("/:symbol", async (c) => {
     client.klines(raw, INTERVALS.macro, SCAN_CONFIG.klineLimit),
     client.ticker24h([raw]),
     client.bookTicker([raw]),
-    resolveBtcRegime(c.env.SCAN_CACHE),
+    resolveBtcRegime(c.env.SCAN_CACHE, c.env.BINANCE_BASE_URLS),
   ]);
 
   const metrics5m = buildIntervalMetrics(INTERVALS.confirmation, klines5m);

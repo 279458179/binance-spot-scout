@@ -12,10 +12,20 @@
  * `data-api.binance.vision` is the official public market-data mirror (no API
  * key, no account) and is reachable from regions where the trading host is
  * blocked, so it leads. `api.binance.com` is the canonical fallback.
+ *
+ * `api.binance.us` is the last resort, and it exists for a specific reason:
+ * Binance refuses requests from whole classes of datacenter IP ranges (HTTP 451
+ * with "Service unavailable from a restricted location", HTTP 403 from the
+ * edge), so a Worker deployed on such an egress cannot reach the two global
+ * hosts at all. The US venue serves the same public schema and needs no key, so
+ * it keeps the scanner functional instead of degrading to `DATA_UNAVAILABLE`.
+ * It exposes a smaller symbol universe than the global venue; the scan reports
+ * whatever the reachable venue actually lists rather than inventing data.
  */
 export const BINANCE_REST_BASE_URLS: readonly string[] = [
   "https://data-api.binance.vision",
   "https://api.binance.com",
+  "https://api.binance.us",
 ];
 
 /** Public websocket mirror used for live price tracking on the client. */
@@ -60,3 +70,13 @@ export const MAX_RETRY_AFTER_MS = 10_000;
 
 /** Treated as "this host is banned" and skipped for the rest of the process. */
 export const BAN_COOLDOWN_MS = 120_000;
+
+/**
+ * How long a host that refused us for geographic reasons stays skipped.
+ *
+ * A blocked egress does not unblock itself minute to minute, so this is far
+ * longer than {@link BAN_COOLDOWN_MS}: long enough that a full scan (hundreds
+ * of calls) only probes a blocked host once, short enough that a redeploy onto
+ * a different colo recovers on its own.
+ */
+export const GEO_BLOCK_COOLDOWN_MS = 600_000;

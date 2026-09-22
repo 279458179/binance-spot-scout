@@ -22,6 +22,7 @@
 import {
   BAN_COOLDOWN_MS,
   BINANCE_REST_BASE_URLS,
+  GEO_BLOCK_COOLDOWN_MS,
   MAX_ATTEMPTS,
   MAX_RETRY_AFTER_MS,
   REQUEST_TIMEOUT_MS,
@@ -57,10 +58,42 @@ let observedWeight = 0;
 /** Hosts that answered with HTTP 418, banned until the stored timestamp. */
 const bannedUntil = new Map<string, number>();
 
-/** Test hook: forget per-process rate-limit state (observed weight + bans). */
+/**
+ * Hosts that refused us for geographic reasons, skipped until the timestamp.
+ *
+ * A blocked egress stays blocked for the life of the deployment, so probing it
+ * on all ~300 calls of a scan would add minutes of latency for nothing. The
+ * cooldown is process-wide on purpose: the whole Worker isolate shares one
+ * egress, so one refusal is evidence about every later request.
+ */
+const geoBlockedUntil = new Map<string, number>();
+
+/**
+ * Markers that identify a geographic refusal rather than a request error.
+ *
+ * Binance answers 451 with an explicit restricted-location message and 403 with
+ * an edge HTML page; both mean "this IP is not welcome", never "your request was
+ * malformed", so retrying or falling back to the same host is pointless.
+ */
+const GEO_BLOCK_BODY_MARKERS: readonly string[] = [
+  "restricted location",
+  "service unavailable from a restricted",
+  "403 forbidden",
+];
+
+/** True when a non-OK response is Binance refusing our egress location. */
+function isGeographicBlock(status: number, body: string): boolean {
+  if (status === 451) return true;
+  if (status !== 403 && status !== 400) return false;
+  const lowered = body.toLowerCase();
+  return GEO_BLOCK_BODY_MARKERS.some((marker) => lowered.includes(marker));
+}
+
+/** Test hook: forget per-process rate-limit and cooldown state. */
 export function resetRateLimitState(): void {
   observedWeight = 0;
   bannedUntil.clear();
+  geoBlockedUntil.clear();
 }
 
 export interface BinanceMarketClientOptions {
@@ -230,6 +263,11 @@ export class BinanceMarketClient {
 
     for (const baseUrl of this.baseUrls) {
       const host = hostOf(baseUrl);
+      const geoBlockMs = this.geoBlockRemainingMs(host);
+      if (geoBlockMs > 0) {
+        failures.push(`${host}: skipped, blocked for our region`);
+        continue;
+      }
       const bannedForMs = this.banRemainingMs(host);
       if (bannedForMs > 0) {
         sawIpBan = true;
@@ -281,9 +319,22 @@ export class BinanceMarketClient {
         }
 
         if (!response.ok) {
-          // Any other 4xx is a request-level error: retrying repeats the same
-          // rejection, so move on to the next host instead.
-          failures.push(`${host}: HTTP ${response.status}`);
+          // A 4xx is either a request-level error (retrying repeats it) or the
+          // venue refusing our egress location. The status alone cannot tell the
+          // two apart — Binance answers 403 from its edge as well — so read the
+          // body to decide whether to skip this host for the rest of the scan.
+          let body = "";
+          try {
+            body = (await response.text()).slice(0, 512);
+          } catch {
+            body = "";
+          }
+          if (isGeographicBlock(response.status, body)) {
+            geoBlockedUntil.set(host, this.nowImpl() + GEO_BLOCK_COOLDOWN_MS);
+            failures.push(`${host}: HTTP ${response.status}, blocked for our region`);
+          } else {
+            failures.push(`${host}: HTTP ${response.status}`);
+          }
           break;
         }
 
@@ -338,6 +389,18 @@ export class BinanceMarketClient {
       }),
     );
     return results;
+  }
+
+  /** Milliseconds left on a host's geographic skip, or 0 when it may be tried. */
+  private geoBlockRemainingMs(host: string): number {
+    const until = geoBlockedUntil.get(host);
+    if (until === undefined) return 0;
+    const remaining = until - this.nowImpl();
+    if (remaining <= 0) {
+      geoBlockedUntil.delete(host);
+      return 0;
+    }
+    return remaining;
   }
 
   private banRemainingMs(host: string): number {

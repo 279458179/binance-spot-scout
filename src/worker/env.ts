@@ -13,4 +13,9 @@ export interface Env {
   ENABLE_DEBUG: string;
   /** Strategy version reported by `/api/health`. */
   STRATEGY_VERSION: string;
+  /**
+   * Optional comma-separated override for the Binance market-data hosts.
+   * Unset means "use the shipped list" (`src/config/api.ts`).
+   */
+  BINANCE_BASE_URLS?: string;
 }
