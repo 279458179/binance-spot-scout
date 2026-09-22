@@ -6,7 +6,7 @@ import { SkeletonRows } from "@/client/components/Skeleton";
 import { fadeInUp } from "@/client/animations/variants";
 import { describeError, fetchHealth } from "@/client/lib/api";
 import { formatAge, formatClockMs, formatDateTime } from "@/client/lib/format";
-import { funnelLabel } from "@/client/lib/labels";
+import { STATUS_LABELS, funnelLabel } from "@/client/lib/labels";
 import type { HealthPayload } from "@/shared/types";
 
 export function DebugPage(): ReactNode {
@@ -36,6 +36,13 @@ export function DebugPage(): ReactNode {
   }, []);
 
   const diagnostics = data?.diagnostics;
+  /**
+   * `topCandidates` was added after the first deploy, and the KV cache serves the
+   * newest scan for up to 30 minutes. A payload written by the previous revision
+   * therefore reaches this page without the field, so it is read defensively
+   * rather than assumed.
+   */
+  const topCandidates = diagnostics?.topCandidates ?? [];
   const dataTimestamp = diagnostics?.dataTimestamp ?? 0;
   const stages = [
     { stage: "universe", count: diagnostics?.universeCount },
@@ -180,6 +187,57 @@ export function DebugPage(): ReactNode {
               <p className="tabular mt-2 text-xs text-ink-500">
                 采集于 {formatClockMs(dataTimestamp)}
               </p>
+            )}
+          </motion.div>
+
+          <motion.div
+            variants={fadeInUp}
+            initial="hidden"
+            animate="show"
+            className="panel mt-3 px-4 py-4"
+          >
+            <p className="field-label">内部候选 Top {topCandidates.length}</p>
+            {topCandidates.length === 0 ? (
+              <p className="mt-2 text-xs text-ink-400">
+                本次没有标的通过初筛，明细为空。
+              </p>
+            ) : (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[34rem] text-left text-xs">
+                  <thead>
+                    <tr className="text-ink-500">
+                      <th scope="col" className="py-1 pr-2 font-medium">标的</th>
+                      <th scope="col" className="py-1 pr-2 text-right font-medium">评分</th>
+                      <th scope="col" className="py-1 pr-2 text-right font-medium">扣分</th>
+                      <th scope="col" className="py-1 pr-2 font-medium">结果</th>
+                      <th scope="col" className="py-1 font-medium">原因 / 未入选理由</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topCandidates.map((entry) => (
+                      <tr key={entry.symbol} className="border-t border-white/5 align-top">
+                        <td className="tabular py-1.5 pr-2 text-ink-100">{entry.symbol}</td>
+                        <td className="tabular py-1.5 pr-2 text-right text-ink-200">
+                          {entry.score === null ? "—" : entry.score.toFixed(1)}
+                        </td>
+                        <td className="tabular py-1.5 pr-2 text-right text-honey-300">
+                          {entry.penalty === null || entry.penalty === 0
+                            ? "—"
+                            : `-${entry.penalty.toFixed(1)}`}
+                        </td>
+                        <td className="py-1.5 pr-2 text-ink-300">
+                          {entry.status === null ? "未评分" : STATUS_LABELS[entry.status]}
+                        </td>
+                        <td className="py-1.5 text-ink-400">
+                          {[entry.rejectReason, ...entry.reasons]
+                            .filter((line): line is string => line !== null && line.length > 0)
+                            .join(" · ") || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </motion.div>
 

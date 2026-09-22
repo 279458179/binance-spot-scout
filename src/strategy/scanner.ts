@@ -19,6 +19,7 @@ import { buildIntervalMetrics } from "@/lib/indicators/metrics";
 import type {
   BookTicker,
   CandidateMetrics,
+  DebugCandidate,
   Interval,
   IntervalMetrics,
   Kline,
@@ -39,6 +40,11 @@ import { scoreCandidate } from "./scoring";
 import { detectSupportResistance } from "./support-resistance";
 import { buildUniverse } from "./universe";
 
+/**
+ * How many candidates the debug payload keeps, best first. Spec #70 asks for the
+ * internal Top 20; the cap also bounds the cached payload size.
+ */
+const DEBUG_CANDIDATE_LIMIT = 20;
 /** Concurrency for the candidate-level kline fan-out, kept clear of the client cap. */
 const KLINE_CONCURRENCY = 6;
 /** Klines per interval per symbol; matches the configured scorer lookback. */
@@ -82,6 +88,8 @@ interface EvaluatedCandidate {
   metrics15m: CandidateMetrics;
   lastCandleMovePct: number;
   score: number;
+  /** Points removed by the penalty engine, kept for the debug view. */
+  penalty: number;
   status: ScanStatus;
   reasons: string[];
   risks: string[];
@@ -203,16 +211,65 @@ async function fetchTechnicalStage(
 }
 
 /** The coarse screen: EMA stack, both slopes up, RSI window, not over-extended. */
-function passesCoarseScreen(entry: {
+type CoarseScreenEntry = {
   trend: { ema9: number; ema21: number; ema55: number; ema21Slope: number; ema55Slope: number };
   primary: { rsi14: number; distanceFromEma21Atr: number };
-}): boolean {
+};
+
+/**
+ * Explains the first coarse-screen check a candidate failed.
+ *
+ * Returns `null` when the candidate passes. Split out from {@link passesCoarseScreen}
+ * so the debug view can say *which* filter rejected a symbol instead of only that
+ * something did.
+ */
+function coarseScreenRejectReason(entry: CoarseScreenEntry): string | null {
   const { trend, primary } = entry;
-  if (!(trend.ema9 > trend.ema21 && trend.ema21 > trend.ema55)) return false;
-  if (!(trend.ema21Slope > 0 && trend.ema55Slope > 0)) return false;
-  if (primary.rsi14 < SCAN_CONFIG.rsiIdealMin || primary.rsi14 > SCAN_CONFIG.rsiIdealMax) return false;
-  if (Math.abs(primary.distanceFromEma21Atr) > SCAN_CONFIG.maxDistanceFromEma21Atr) return false;
-  return true;
+  if (!(trend.ema9 > trend.ema21 && trend.ema21 > trend.ema55)) {
+    return "1h EMA 未形成多头排列（EMA9 > EMA21 > EMA55）";
+  }
+  if (!(trend.ema21Slope > 0 && trend.ema55Slope > 0)) {
+    return "1h EMA21 或 EMA55 斜率未向上";
+  }
+  if (primary.rsi14 < SCAN_CONFIG.rsiIdealMin || primary.rsi14 > SCAN_CONFIG.rsiIdealMax) {
+    return `15m RSI ${primary.rsi14.toFixed(1)} 落在 ${SCAN_CONFIG.rsiIdealMin}~${SCAN_CONFIG.rsiIdealMax} 之外`;
+  }
+  if (Math.abs(primary.distanceFromEma21Atr) > SCAN_CONFIG.maxDistanceFromEma21Atr) {
+    return `偏离 EMA21 ${Math.abs(primary.distanceFromEma21Atr).toFixed(1)} ATR 超过 ${SCAN_CONFIG.maxDistanceFromEma21Atr}`;
+  }
+  return null;
+}
+
+function passesCoarseScreen(entry: CoarseScreenEntry): boolean {
+  return coarseScreenRejectReason(entry) === null;
+}
+
+/** Caps the debug payload while preferring the candidates that scored best. */
+function toDebugCandidates(
+  ranked: readonly EvaluatedCandidate[],
+  rejected: readonly DebugCandidate[],
+): DebugCandidate[] {
+  const top = ranked.slice(0, DEBUG_CANDIDATE_LIMIT).map((entry, index) => {
+    const { candidate, score, penalty, status, reasons } = entry;
+    return {
+      symbol: candidate.symbol,
+      quoteVolume24h: candidate.quoteVolume24h,
+      score,
+      penalty,
+      status,
+      reasons,
+      // The best candidate is the answer, so it has nothing to be rejected for;
+      // every other row states the gap that kept it out of first place.
+      rejectReason:
+        index === 0
+          ? null
+          : `评分 ${score} 低于本次最佳候选的 ${ranked[0]?.score ?? score}`,
+    } satisfies DebugCandidate;
+  });
+
+  const room = DEBUG_CANDIDATE_LIMIT - top.length;
+  if (room <= 0) return top;
+  return [...top, ...rejected.slice(0, room)];
 }
 
 /**
@@ -258,6 +315,27 @@ export async function runScan(client: BinanceMarketClient): Promise<ScanPayload>
     technicalScanCount = shortlist.length;
 
     const technicalStage = await fetchTechnicalStage(client, shortlist, providerErrors);
+
+    // Spec #70: keep the symbols the coarse screen dropped, with the check that
+    // dropped them, so the debug view explains the funnel instead of just sizing it.
+    const coarseRejected: DebugCandidate[] = [];
+    for (const entry of technicalStage) {
+      const rejectReason = coarseScreenRejectReason(entry);
+      if (rejectReason !== null) {
+        coarseRejected.push({
+          symbol: entry.candidate.symbol,
+          quoteVolume24h: entry.candidate.quoteVolume24h,
+          score: null,
+          penalty: null,
+          status: null,
+          reasons: [],
+          rejectReason,
+        });
+      }
+    }
+    coarseRejected.sort(
+      (left, right) => right.quoteVolume24h - left.quoteVolume24h,
+    );
 
     const coarse = technicalStage
       .filter((entry) => passesCoarseScreen(entry))
@@ -355,6 +433,7 @@ export async function runScan(client: BinanceMarketClient): Promise<ScanPayload>
           metrics15m: buildMetrics(primary, trend, spread),
           lastCandleMovePct: move,
           score: breakdown.total,
+          penalty: breakdown.penalty,
           status,
           reasons,
           risks,
@@ -388,6 +467,7 @@ export async function runScan(client: BinanceMarketClient): Promise<ScanPayload>
       scanDurationMs: Date.now() - now,
       dataTimestamp: top?.evaluatedAt ?? Date.now(),
       providerErrors: unique(providerErrors),
+      topCandidates: toDebugCandidates(ranked, coarseRejected),
     };
 
     if (top === null) {

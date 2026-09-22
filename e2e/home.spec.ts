@@ -8,7 +8,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import type { ScanPayload, ScanResult } from "../src/shared/types";
+import type { ScanPayload, ScanResult, SymbolDetail } from "../src/shared/types";
 
 const GENERATED_AT = new Date().toISOString();
 
@@ -52,18 +52,60 @@ function payloadFor(result: ScanResult): ScanPayload {
       scanDurationMs: 5_400,
       dataTimestamp: Date.parse(GENERATED_AT),
       providerErrors: [],
+      topCandidates: [],
     },
     cached: false,
   };
 }
 
-/** Answers every API call with the supplied decision. */
+/** The per-symbol deep dive `/api/symbol/:symbol` returns, shaped like the real route. */
+function symbolDetailFor(symbol: string, score: number): SymbolDetail {
+  return {
+    symbol,
+    generatedAt: GENERATED_AT,
+    marketRegime: "RISK_ON",
+    metrics15m: null,
+    metrics1h: null,
+    metrics5m: null,
+    metrics4h: null,
+    ticker: null,
+    book: null,
+    supportResistance: null,
+    score: {
+      trend: 22,
+      momentum: 15,
+      volume: 12,
+      entry: 13,
+      liquidity: 9,
+      riskReward: 7,
+      market: 5,
+      penalty: 3,
+      total: score,
+    },
+    riskGate: { passed: true, violations: [], reasons: [], warnings: [] },
+    patterns: [],
+    notes: ["1h 结构完整", "15m 回踩 EMA21 后重新站稳"],
+  };
+}
+
+/**
+ * Answers every API call with the supplied decision.
+ *
+ * Each route must return its own real shape: the detail route is a different
+ * payload from the scan route, and serving one for the other is what a
+ * well-meaning mock gets wrong.
+ */
 async function mockApi(page: Page, result: ScanResult): Promise<void> {
   const payload = payloadFor(result);
   await page.route("**/api/**", async (route) => {
     const url = route.request().url();
     if (url.includes("/api/history")) {
       await route.fulfill({ status: 200, json: { ok: true, entries: [] } });
+      return;
+    }
+    if (url.includes("/api/symbol/")) {
+      const symbol = decodeURIComponent(url.split("/api/symbol/")[1]?.split("?")[0] ?? "SUIUSDT");
+      await route.fulfill({ status: 200, json: symbolDetailFor(symbol, result.score) });
       return;
     }
     await route.fulfill({ status: 200, json: payload });
@@ -93,6 +135,8 @@ test.describe("home", () => {
     await toggle.click();
 
     await expect(page.getByRole("button", { name: "收起评分拆解" })).toBeVisible();
+    // The detail payload must actually render, not silently fall back to empty.
+    await expect(page.getByText("1h 结构完整")).toBeVisible();
   });
 
   test("starts live tracking and offers Binance plus a rescan", async ({ page }) => {
@@ -150,6 +194,24 @@ test.describe("home", () => {
     await expect(page.getByText("76", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("回踩", { exact: false }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "开始追踪" })).toHaveCount(0);
+  });
+
+  test("renders without a React error on a detail payload missing optional fields", async ({
+    page,
+  }) => {
+    const renderErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("spot-scout")) {
+        renderErrors.push(message.text());
+      }
+    });
+
+    await mockApi(page, entryNowResult());
+    await page.goto("/");
+    await page.getByRole("button", { name: "查看评分拆解" }).click();
+    await expect(page.getByRole("button", { name: "收起评分拆解" })).toBeVisible();
+
+    expect(renderErrors).toEqual([]);
   });
 
   test("surfaces a data-unavailable failure instead of a stale recommendation", async ({ page }) => {

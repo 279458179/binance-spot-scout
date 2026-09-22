@@ -117,7 +117,7 @@ export function ResultCard({
         </dl>
       ) : null}
 
-      {result.reasons.length > 0 ? (
+      {(result.reasons?.length ?? 0) > 0 ? (
         <div className="space-y-2">
           <h3 className="field-label">入选理由</h3>
           <ul className="space-y-1.5">
@@ -133,7 +133,7 @@ export function ResultCard({
         </div>
       ) : null}
 
-      {result.risks.length > 0 ? (
+      {(result.risks?.length ?? 0) > 0 ? (
         <div className="space-y-2">
           <h3 className="field-label">风险提示</h3>
           <ul className="space-y-1.5">
@@ -174,9 +174,9 @@ export function ResultCard({
               <ScoreBreakdown score={detail?.score ?? null} />
             )}
             {error !== null ? <p className="text-sm text-coral-300">{error}</p> : null}
-            {detail !== null && detail.notes.length > 0 ? (
+            {(detail?.notes?.length ?? 0) > 0 ? (
               <ul className="space-y-1">
-                {detail.notes.map((note) => (
+                {(detail?.notes ?? []).map((note) => (
                   <li key={note} className="text-xs leading-relaxed text-ink-400">
                     · {note}
                   </li>

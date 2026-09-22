@@ -232,6 +232,34 @@ export interface ScanDiagnostics {
   scanDurationMs: number;
   dataTimestamp: number;
   providerErrors: string[];
+  /**
+   * The deepest candidates of this run, best score first, capped for payload
+   * size. Populated for every scan so the debug view stays truthful in
+   * production when `ENABLE_DEBUG` is turned on.
+   */
+  topCandidates: DebugCandidate[];
+}
+
+/**
+ * One internally-evaluated candidate, kept for the debug view.
+ *
+ * Mirrors spec #70: the debug page has to answer "why was this symbol not the
+ * pick?" without re-running the scan, so each entry carries the score, the
+ * penalty it was charged and the single reason it was held back.
+ */
+export interface DebugCandidate {
+  symbol: string;
+  quoteVolume24h: number;
+  /** Final score; `null` when the symbol never reached scoring. */
+  score: number | null;
+  /** Points removed by the penalty engine; `null` when never scored. */
+  penalty: number | null;
+  /** Decision the candidate earned, or `null` when it was filtered earlier. */
+  status: ScanStatus | null;
+  /** Human-readable reasons supporting the decision. */
+  reasons: string[];
+  /** Why this candidate is not the answer, when that applies. */
+  rejectReason: string | null;
 }
 
 /** Payload wrapper returned by `POST /api/scan` and `GET /api/latest`. */

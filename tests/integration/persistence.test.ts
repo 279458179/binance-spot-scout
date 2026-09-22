@@ -70,6 +70,7 @@ function makePayload(overrides: Partial<ScanPayload["result"]> = {}): ScanPayloa
       scanDurationMs: 5_400,
       dataTimestamp: 1_789_000_000_000,
       providerErrors: [],
+      topCandidates: [],
     },
     cached: false,
   };

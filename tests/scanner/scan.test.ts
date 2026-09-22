@@ -204,6 +204,41 @@ describe("Scenario 4 — thin liquidity", () => {
   });
 });
 
+describe("debug diagnostics", () => {
+  it("lists the internally evaluated candidates with score, penalty and a reason", async () => {
+    const { diagnostics } = await runScan(makeMarket());
+
+    expect(diagnostics.topCandidates.length).toBeGreaterThan(0);
+    const [best] = diagnostics.topCandidates;
+    expect(best?.symbol).toBe(ALT);
+    expect(best?.score).toBe(diagnostics.topScore);
+    expect(best?.penalty).toBe(0);
+    expect(best?.status).toBe("ENTRY_NOW");
+    // The winning row is the answer, so it is not rejected for anything.
+    expect(best?.rejectReason).toBeNull();
+  });
+
+  it("records which coarse-screen check dropped a candidate", async () => {
+    const { diagnostics } = await runScan(
+      makeMarket({ alt15m: alt15mSegments(108) }),
+    );
+
+    const rejected = diagnostics.topCandidates.filter((entry) => entry.score === null);
+    expect(rejected.length).toBeGreaterThan(0);
+    const alt = rejected.find((entry) => entry.symbol === ALT);
+    expect(alt?.rejectReason).toContain("RSI");
+  });
+
+  it("explains the runner-up by comparing it against the winning score", async () => {
+    const { diagnostics } = await runScan(makeMarket());
+
+    if (diagnostics.topCandidates.length > 1) {
+      const runnerUp = diagnostics.topCandidates[1];
+      expect(runnerUp?.rejectReason).toContain("低于本次最佳候选的");
+    }
+  });
+});
+
 describe("Scenario 5 — BTC crashes while the altcoin still looks fine", () => {
   it("never reports ENTRY_NOW on a fast market-wide drop", async () => {
     const { result } = await runScan(makeMarket({ btc1h: BTC_CRASH_1H }));
