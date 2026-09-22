@@ -45,6 +45,24 @@ const KLINE_CONCURRENCY = 6;
 const KLINE_LIMIT = SCAN_CONFIG.klineLimit;
 /** Chinese copy for a scan that produced no tradable candidate at all. */
 const NO_CANDIDATE_REASON = "本次扫描没有找到同时满足流动性与形态条件的标的";
+
+/**
+ * Chinese copy for the case where the volume floor alone emptied the funnel.
+ *
+ * Worth its own message: the generic "no candidate" wording reads like a quiet
+ * market, but an empty liquidity stage is usually the venue's fault — a mirror
+ * that lists fewer, thinner pairs — and the user cannot tell the two apart
+ * without being told. The floor itself is never lowered to manufacture a result.
+ */
+function emptyFunnelReason(universeCount: number, liquidityCount: number, spreadCount: number): string {
+  if (universeCount > 0 && liquidityCount === 0) {
+    return `本次扫描没有标的达到 ${SCAN_CONFIG.minQuoteVolume24h / 1_000_000}M USDT 的 24 小时成交额下限`;
+  }
+  if (liquidityCount > 0 && spreadCount === 0) {
+    return `本次扫描的标的买卖价差都超过 ${SCAN_CONFIG.maxSpreadPct}% 上限，滑点风险过高`;
+  }
+  return NO_CANDIDATE_REASON;
+}
 /** Chinese copy for the second freshness check performed after scoring. */
 const STALE_DEMOTION_REASON = "数据超过 5 分钟未更新，先等待回踩确认";
 
@@ -382,7 +400,7 @@ export async function runScan(client: BinanceMarketClient): Promise<ScanPayload>
           score: 0,
           targetPct: SCAN_CONFIG.targetPct,
           marketRegime: regime.regime,
-          reasons: [NO_CANDIDATE_REASON],
+          reasons: [emptyFunnelReason(universeCount, liquidityFilterCount, technicalScanCount)],
           risks: unique(regime.reasons),
           metrics: null,
           plan: null,

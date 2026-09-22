@@ -51,7 +51,7 @@ function scriptedFetch(script: (url: string) => { status: number; body: string }
   calls: Call[];
 } {
   const calls: Call[] = [];
-  const fetchImpl = (async (input: RequestInfo | URL) => {
+  const fetchImpl = (async (input: Parameters<typeof fetch>[0]) => {
     const url = String(input);
     const { status, body } = script(url);
     calls.push({ url, status, body });

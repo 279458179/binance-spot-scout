@@ -100,6 +100,7 @@ interface MarketOptions {
   alt1h?: readonly SeriesSegment[];
   btc1h?: readonly SeriesSegment[];
   altTicker?: Partial<Ticker24h>;
+  btcTicker?: Partial<Ticker24h>;
 }
 
 /** Builds the whole fake market; each scenario overrides only what it probes. */
@@ -112,7 +113,10 @@ function makeMarket(options: MarketOptions = {}) {
       makeSymbolInfo({ symbol: ALT, baseAsset: "AAA", quoteAsset: "USDT" }),
       makeSymbolInfo({ symbol: BTC, baseAsset: "BTC", quoteAsset: "USDT" }),
     ],
-    tickers: [altTicker, makeTicker({ symbol: BTC, lastPrice: 101.6, quoteVolume: 5_000_000_000 })],
+    tickers: [
+      altTicker,
+      makeTicker({ symbol: BTC, lastPrice: 101.6, quoteVolume: 5_000_000_000, ...options.btcTicker }),
+    ],
     books: [altBook],
     klines: {
       [`${ALT}|15m`]: makeSeries("15m", options.alt15m ?? alt15mSegments(104.5), ALT_15M_SHAPE),
@@ -182,6 +186,21 @@ describe("Scenario 4 — thin liquidity", () => {
     // from the liquidity stage and nothing is scored on it.
     expect(diagnostics.topCandidate).not.toBe(ALT);
     expect(diagnostics.candidateCount).toBe(0);
+  });
+
+  it("names the volume floor when no symbol is liquid enough to scan", async () => {
+    const { result, diagnostics } = await runScan(
+      makeMarket({
+        altTicker: { quoteVolume: 3_000_000 },
+        btcTicker: { quoteVolume: 3_000_000 },
+      }),
+    );
+
+    expect(diagnostics.universeCount).toBe(2);
+    expect(diagnostics.liquidityFilterCount).toBe(0);
+    expect(result.status).toBe("NO_TRADE");
+    // A thin venue must not read as a quiet market.
+    expect(result.reasons[0]).toContain("成交额下限");
   });
 });
 
