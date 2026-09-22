@@ -173,7 +173,9 @@ test.describe("home", () => {
     );
     await page.goto("/");
 
-    await expect(page.getByText("今天不出手")).toBeVisible();
+    // "今天不出手" also appears in the hero copy and the status pill, so scope to
+    // the card heading rather than matching any occurrence on the page.
+    await expect(page.getByRole("heading", { name: "今天不出手" })).toBeVisible();
     await expect(page.getByText("为什么不出手")).toBeVisible();
     await expect(page.getByText("成交额下限")).toBeVisible();
     // The empty state must not fall back to a candidate card.
