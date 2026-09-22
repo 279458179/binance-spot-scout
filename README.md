@@ -149,7 +149,20 @@ npm run deploy
 
 `wrangler.jsonc` 已包含 Static Assets、Worker、KV、D1 与 2 分钟一次的 Cron，Cloudflare Workers Builds 连接仓库后 push 即自动 Build & Deploy。
 
-> **地域限制提示**：Binance 会拒绝部分数据中心网段的请求（HTTP 451 / 403）。本项目内置了 `data-api.binance.vision` → `api.binance.com` → `api.binance.us` 的依次回退，并把被拒的域名放进冷却名单以免拖慢扫描。若你的部署落在受限网段，可显式指定可达站点：
+> **地域限制提示（重要）**：Binance 会按网段拒绝请求（HTTP 451 / 403），
+> 官方公开镜像在部分数据中心出口上完全不可达。本项目内置
+> `data-api.binance.vision` → `api.binance.com` → `api.binance.us` 的依次回退，
+> 并把被拒的域名放进冷却名单以免拖慢扫描。
+>
+> 需要注意：回退到的 **US 场地流动性远低于全球主站**（其最深的 `BTCUSDT`
+> 24h 成交额约 4–5M USDT），而策略的流动性下限是硬性的 **5M USDT**
+> （见 [Strategy](#strategy) 与 `SCAN_CONFIG.minQuoteVolume24h`）。因此**部署在受限
+> 网段时，扫描会如实返回 `NO_TRADE`，并说明“没有标的达到成交额下限”** ——
+> 这是风控在正常工作，而不是接口故障。本项目**不会**为了产出信号而自动放宽这个
+> 下限：低流动性带来的滑点正是策略要规避的风险。
+>
+> 想让扫描真正筛出候选，请让 Worker 能访问全球主站（把 `BINANCE_BASE_URLS`
+> 指向一个可用的镜像或自建代理）：
 >
 > ```bash
 > npx wrangler secret put BINANCE_BASE_URLS   # 或写进 wrangler.jsonc 的 vars
