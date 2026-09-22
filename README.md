@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start"><img alt="Tests" src="https://img.shields.io/badge/tests-246%20unit%20%2B%207%20e2e-brightgreen" /></a>
+  <a href="#quick-start"><img alt="Tests" src="https://img.shields.io/badge/tests-249%20unit%20%2B%208%20e2e-brightgreen" /></a>
   <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.0.0-blue" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey" />
 </p>
@@ -109,8 +109,8 @@ npm run dev          # http://localhost:5173
 无需任何环境变量即可本地运行 —— 默认直连 Binance 公开行情。
 
 ```bash
-npm test             # 246 个单元 / 集成用例
-npm run test:e2e     # 7 个 Playwright 用例
+npm test             # 249 个单元 / 集成用例
+npm run test:e2e     # 8 个 Playwright 用例
 npm run typecheck
 npm run lint
 npm run build
