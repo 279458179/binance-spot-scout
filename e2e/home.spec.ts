@@ -1,0 +1,185 @@
+/**
+ * End-to-end coverage of the one decision the product exists to make.
+ *
+ * The Worker API is intercepted, so these tests assert the UI contract — which
+ * card appears for which decision, and what the visitor can do next — without
+ * depending on live market conditions.
+ */
+
+import { expect, test, type Page } from "@playwright/test";
+
+import type { ScanPayload, ScanResult } from "../src/shared/types";
+
+const GENERATED_AT = new Date().toISOString();
+
+/** A tradable candidate, shaped exactly like the Worker's payload. */
+function entryNowResult(overrides: Partial<ScanResult> = {}): ScanResult {
+  return {
+    status: "ENTRY_NOW",
+    symbol: "SUIUSDT",
+    baseAsset: "SUI",
+    price: 3.37,
+    score: 81,
+    targetPct: 5,
+    marketRegime: "RISK_ON",
+    reasons: ["15m 回踩 EMA21 后重新站稳", "成交量放大 1.8 倍"],
+    risks: ["距离短线压力位约 3.8%"],
+    metrics: {
+      rsi15m: 61,
+      rsi1h: 58,
+      volumeRatio: 1.8,
+      spreadPct: 0.12,
+      atrPct: 0.9,
+    },
+    plan: { referencePrice: 3.37, target5Pct: 3.5385, invalidation: 3.11 },
+    generatedAt: GENERATED_AT,
+    strategyVersion: "1.0.0",
+    ...overrides,
+  };
+}
+
+function payloadFor(result: ScanResult): ScanPayload {
+  return {
+    result,
+    diagnostics: {
+      universeCount: 412,
+      liquidityFilterCount: 103,
+      technicalScanCount: 103,
+      deepScanCount: 15,
+      candidateCount: 1,
+      topCandidate: result.symbol,
+      topScore: result.score,
+      scanDurationMs: 5_400,
+      dataTimestamp: Date.parse(GENERATED_AT),
+      providerErrors: [],
+    },
+    cached: false,
+  };
+}
+
+/** Answers every API call with the supplied decision. */
+async function mockApi(page: Page, result: ScanResult): Promise<void> {
+  const payload = payloadFor(result);
+  await page.route("**/api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/api/history")) {
+      await route.fulfill({ status: 200, json: { ok: true, entries: [] } });
+      return;
+    }
+    await route.fulfill({ status: 200, json: payload });
+  });
+}
+
+test.describe("home", () => {
+  test("shows a candidate with its score, plan and reasons for ENTRY_NOW", async ({ page }) => {
+    await mockApi(page, entryNowResult());
+    await page.goto("/");
+
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("点击一次");
+    await expect(page.getByText("SUI", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("81", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("15m 回踩 EMA21 后重新站稳")).toBeVisible();
+
+    const target = page.getByText("+5%", { exact: false }).first();
+    await expect(target).toBeVisible();
+  });
+
+  test("expands the score breakdown on demand", async ({ page }) => {
+    await mockApi(page, entryNowResult());
+    await page.goto("/");
+
+    const toggle = page.getByRole("button", { name: "查看评分拆解" });
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+
+    await expect(page.getByRole("button", { name: "收起评分拆解" })).toBeVisible();
+  });
+
+  test("starts live tracking and offers Binance plus a rescan", async ({ page }) => {
+    await mockApi(page, entryNowResult());
+    await page.goto("/");
+
+    const tracker = page.getByRole("button", { name: "开始追踪" });
+    await expect(tracker).toBeVisible();
+    await tracker.click();
+
+    // Both the tracker panel and the primary CTA relabel themselves, so scope to one.
+    await expect(page.getByRole("button", { name: "停止追踪" }).first()).toBeVisible();
+    const exchangeLink = page.getByRole("link", { name: "打开 Binance" });
+    await expect(exchangeLink).toBeVisible();
+    // The handoff must point at the candidate's own spot pair.
+    await expect(exchangeLink).toHaveAttribute("href", /SUI_USDT/);
+    // A rescan affordance appears both on the card and in the page CTA.
+    await expect(page.getByRole("button", { name: "重新扫描" }).first()).toBeVisible();
+  });
+
+  test("says no trade instead of inventing a symbol", async ({ page }) => {
+    await mockApi(
+      page,
+      entryNowResult({
+        status: "NO_TRADE",
+        symbol: null,
+        baseAsset: null,
+        price: null,
+        score: 0,
+        reasons: ["本次扫描没有标的达到 5M USDT 的 24 小时成交额下限"],
+        metrics: null,
+        plan: null,
+      }),
+    );
+    await page.goto("/");
+
+    await expect(page.getByText("今天不出手")).toBeVisible();
+    await expect(page.getByText("为什么不出手")).toBeVisible();
+    await expect(page.getByText("成交额下限")).toBeVisible();
+    // The empty state must not fall back to a candidate card.
+    await expect(page.getByRole("button", { name: "开始追踪" })).toHaveCount(0);
+  });
+
+  test("shows the wait-for-pullback state for a stretched but healthy name", async ({ page }) => {
+    await mockApi(
+      page,
+      entryNowResult({
+        status: "WAIT_PULLBACK",
+        score: 76,
+        reasons: ["15m RSI 偏高，等回踩 EMA21 更合适"],
+      }),
+    );
+    await page.goto("/");
+
+    await expect(page.getByText("76", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("回踩", { exact: false }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "开始追踪" })).toHaveCount(0);
+  });
+
+  test("surfaces a data-unavailable failure instead of a stale recommendation", async ({ page }) => {
+    await page.route("**/api/**", async (route) => {
+      await route.fulfill({
+        status: 502,
+        json: {
+          ok: false,
+          error: "DATA_UNAVAILABLE",
+          message: "行情源暂时不可用，请稍后重试",
+          code: "DATA_UNAVAILABLE",
+        },
+      });
+    });
+    await page.goto("/");
+
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("行情源");
+  });
+});
+
+test.describe("navigation", () => {
+  test("moves between radar, history and about", async ({ page }) => {
+    await mockApi(page, entryNowResult());
+    await page.goto("/");
+
+    await page.getByRole("link", { name: "历史" }).click();
+    await expect(page).toHaveURL(/\/history$/);
+
+    await page.getByRole("link", { name: "说明" }).click();
+    await expect(page).toHaveURL(/\/about$/);
+  });
+});

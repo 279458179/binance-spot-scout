@@ -48,6 +48,22 @@ export function NoTradeCard({
         </p>
       </div>
 
+      {result.reasons.length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="field-label">为什么不出手</h3>
+          <ul className="space-y-1.5">
+            {result.reasons.map((reason) => (
+              <li key={reason} className="flex gap-2 text-sm leading-relaxed text-ink-300">
+                <span aria-hidden className="text-ink-500">
+                  ·
+                </span>
+                <span>{reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {result.risks.length > 0 ? (
         <div className="space-y-2">
           <h3 className="field-label">当前市场的主要压力</h3>

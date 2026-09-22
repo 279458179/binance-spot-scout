@@ -32,6 +32,17 @@ function requestNotifications(): void {
   void Notification.requestPermission().catch(() => undefined);
 }
 
+/**
+ * Binance Spot trade page for a symbol.
+ *
+ * The product is a research tool and never places orders, so the handoff to the
+ * exchange is an explicit link the visitor clicks themselves.
+ */
+function binanceTradeUrl(symbol: string): string {
+  const base = symbol.replace(/USDT$/, "");
+  return `https://www.binance.com/en/trade/${base}_USDT?type=spot`;
+}
+
 /** ENTRY_NOW card: the single candidate worth a look right now. */
 export function ResultCard({
   result,
@@ -192,6 +203,16 @@ export function ResultCard({
         >
           {tracking ? "停止追踪" : "开始追踪"}
         </button>
+        {symbol !== null ? (
+          <a
+            href={binanceTradeUrl(symbol)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 rounded-2xl border border-white/10 px-5 py-3 text-center text-sm font-semibold text-ink-200 transition-colors hover:bg-white/5"
+          >
+            打开 Binance
+          </a>
+        ) : null}
         {onRescan !== undefined ? (
           <button
             type="button"
