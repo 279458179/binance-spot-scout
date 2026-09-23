@@ -118,7 +118,7 @@ npx wrangler d1 migrations apply spot_scout_db --remote
 npm run deploy
 ```
 
-`wrangler.jsonc` 已包含 Static Assets、Worker、KV、D1 与 2 分钟一次的 Cron。部署前请执行 `npx wrangler d1 migrations apply spot_scout_db --remote`，确保 v1.1 去重与 outcome 字段已应用。
+`wrangler.jsonc` 已包含 Static Assets、Worker、KV、D1、自定义域名 `binance.myg2ray.top` 与 2 分钟一次的 Cron。部署前请执行 `npx wrangler d1 migrations apply spot_scout_db --remote`，确保 v1.1 去重与 outcome 字段已应用。首次配置自定义域名时，域名所在 Zone 必须已托管在同一个 Cloudflare 账号。
 
 ## Data Integrity
 
