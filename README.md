@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="#quick-start"><img alt="Tests" src="https://img.shields.io/badge/tests-249%20unit%20%2B%2028%20e2e-brightgreen" /></a>
-  <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.1.0-blue" />
+  <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.2.0-blue" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey" />
 </p>
 
@@ -149,7 +149,7 @@ npm run deploy
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `ENABLE_DEBUG` | `false` | 生产环境是否暴露 `/debug` 与 `diagnostics` |
-| `STRATEGY_VERSION` | `1.1.0` | 写入每次扫描结果与 D1，便于跨版本比较 |
+| `STRATEGY_VERSION` | `1.2.0` | 写入每次扫描结果与 D1，便于跨版本比较 |
 | `BINANCE_BASE_URLS` | 见上 | 可选，逗号分隔的行情站点列表 |
 
 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 只用于 CLI 部署，不要提交到仓库（`.env.example` 仅有变量名）。

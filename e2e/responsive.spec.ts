@@ -165,7 +165,7 @@ for (const viewport of WIDTHS) {
 
       const actions = [
         page.getByRole("link", { name: "打开 Binance" }),
-        page.getByRole("button", { name: "重新扫描" }).first(),
+        page.getByRole("button", { name: /摇币/ }).first(),
       ];
 
       for (const action of actions) {

@@ -207,7 +207,8 @@ describe("Ranking-first invariants", () => {
   it("does not let a rejected stronger name hide a tradable weaker name", async () => {
     const { result, diagnostics } = await runScan(makeMarket({ alt15m: alt15mBlowOffSegments() }));
 
-    expect(result.status).toBe("WATCH_ONLY");
+    expect(result.status).toBe("BUY_ON_PULLBACK");
+    expect(result.symbol).not.toBeNull();
     expect(diagnostics.topCandidates.find((entry) => entry.symbol === ALT)?.score).toBe(26);
     expect(diagnostics.topCandidate).toBe(BTC);
   });
@@ -240,8 +241,9 @@ describe("Scenario 2 — blow-off top with extreme 15m RSI", () => {
 
     const { result } = await runScan(makeMarket({ alt15m: segments }));
 
-    expect(result.status).toBe("WATCH_ONLY");
-    expect(result.score).toBe(0);
+    expect(result.status).toBe("BUY_ON_PULLBACK");
+    expect(result.score).toBe(31);
+    expect(result.symbol).not.toBeNull();
   });
 });
 
@@ -263,7 +265,7 @@ describe("Scenario 4 — thin liquidity", () => {
       makeMarket({ altTicker: { quoteVolume: 3_000_000 } }),
     );
 
-    expect(result.status).toBe("WATCH_ONLY");
+    expect(result.status).toBe("BUY_ON_PULLBACK");
     expect(result.symbol).not.toBe(ALT);
     // The thin name never reaches the volume floor, so the altcoin is absent
     // from the liquidity stage and nothing is scored on it.
@@ -281,9 +283,10 @@ describe("Scenario 4 — thin liquidity", () => {
 
     expect(diagnostics.universeCount).toBe(2);
     expect(diagnostics.liquidityFilterCount).toBe(0);
-    expect(result.status).toBe("WATCH_ONLY");
-    // A thin venue must not read as a quiet market.
+    expect(result.status).toBe("BUY_ON_PULLBACK");
+    // Always Pick degrades to the deepest name instead of leaving without a pick.
     expect(result.reasons[0]).toContain("成交额下限");
+    expect(result.symbol).not.toBeNull();
   });
 });
 

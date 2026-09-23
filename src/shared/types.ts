@@ -266,6 +266,8 @@ export interface HistoryEntry {
   reasons: string[];
   risks: string[];
   outcome?: HistoryOutcome;
+  /** Cross-market relative-strength rank, if research aggregation has run. */
+  relativeRank?: number;
 }
 
 /** Actual performance recorded for a historical decision, when available. */

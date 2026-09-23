@@ -84,7 +84,7 @@ export function NoTradeCard({
           disabled={rescanning}
           className="w-full rounded-2xl bg-white/10 px-5 py-3 text-sm font-semibold text-ink-100 transition-colors hover:bg-white/15 disabled:text-ink-500"
         >
-          {rescanning ? "重新扫描中…" : "重新扫描"}
+          {rescanning ? "正在摇币…" : "🎲 摇币"}
         </button>
       ) : null}
     </motion.section>

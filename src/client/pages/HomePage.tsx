@@ -9,6 +9,7 @@ import { HeroIntro } from "@/client/components/v11/HeroIntro";
 import { HeroReveal } from "@/client/components/v11/HeroReveal";
 import { MarketContext } from "@/client/components/v11/MarketContext";
 import { RiskInsights, WhyThisCoin } from "@/client/components/v11/InsightLists";
+import { CoinShaker } from "@/client/components/v11/CoinShaker";
 import { ScanProgress } from "@/client/components/v11/ScanProgress";
 import { ScanOrb } from "@/client/components/v11/ScanOrb";
 import { SkeletonCard } from "@/client/components/Skeleton";
@@ -55,7 +56,12 @@ export function HomePage(): ReactNode {
         </div>
       ) : (
         <>
-          {scan.loading ? <ScanProgress /> : null}
+          {scan.loading ? (
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <CoinShaker />
+              <ScanProgress />
+            </motion.div>
+          ) : null}
 
           <AnimatePresence mode="wait">
             {result !== null ? (

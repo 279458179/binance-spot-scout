@@ -447,40 +447,76 @@ export async function runScan(client: BinanceMarketClient, now: number = Date.no
     };
 
     if (!top) {
-      if (providerErrors.length > 0 || liquidityFilterCount === 0) {
-        return halted(
-          regime.regime,
-          liquidityFilterCount === 0
-            ? [`所有候选 24h 成交额低于 ${SCAN_CONFIG.minQuoteVolume24h / 1_000_000}M USDT 成交额下限，仅保留市场观察`]
-            : ["暂无可评估候选，市场数据不完整"],
-          regime.reasons,
-          now,
-          diagnostics,
-        );
-      }
       const fallbackEntry = technical[0]?.entry ?? null;
       const fallbackLiquidity = technical[0]?.liquidity ?? null;
       const rejectedEntry = fallbackEntry ? null : rejectedTechnical[0] ?? null;
       const fallbackPrimary = fallbackEntry?.primary ?? rejectedEntry?.primary ?? null;
       const fallbackTrend = fallbackEntry?.trend ?? rejectedEntry?.trend ?? null;
       const fallbackSymbol = fallbackEntry?.candidate.symbol ?? rejectedEntry?.candidate.symbol ?? null;
+      if (liquidityFilterCount === 0 && !fallbackSymbol) {
+        const fallbackTicker = [...tickers]
+          .filter((entry) => entry.symbol.endsWith("USDT") && Number.isFinite(entry.lastPrice) && entry.lastPrice > 0)
+          .sort((left, right) => right.quoteVolume - left.quoteVolume)[0];
+        if (fallbackTicker) {
+          return {
+            result: {
+              status: "BUY_ON_PULLBACK",
+              symbol: fallbackTicker.symbol,
+              baseAsset: fallbackTicker.symbol.replace(/USDT$/, ""),
+              price: fallbackTicker.lastPrice,
+              score: 0,
+              targetPct: SCAN_CONFIG.targetPct,
+              marketRegime: regime.regime,
+              reasons: [`所有候选 24h 成交额低于 ${SCAN_CONFIG.minQuoteVolume24h / 1_000_000}M USDT 成交额下限，已按成交额降级推荐`],
+              risks: ["成交额低于常规流动性门槛，滑点风险较高", "缺少完整周期验证，建议等待回踩与确认"],
+              metrics: null,
+              plan: null,
+              generatedAt: new Date(now).toISOString(),
+              strategyVersion: STRATEGY_VERSION,
+              absoluteScore: 0,
+              opportunityScore: 0,
+              marketRank: 1,
+              relativeRank: 1,
+              confidence: "LOW",
+              topCandidates: [{
+                symbol: fallbackTicker.symbol,
+                status: "BUY_ON_PULLBACK",
+                absoluteScore: 0,
+                opportunityScore: 0,
+                hardRiskPassed: true,
+                triggerConfirmed: false,
+              }],
+            },
+            diagnostics: { ...diagnostics, topCandidate: fallbackTicker.symbol, topScore: 0 },
+            cached: false,
+          };
+        }
+      }
       if (!fallbackPrimary || !fallbackTrend || !fallbackSymbol) {
         return halted(regime.regime, ["暂无可评估候选，市场数据不完整"], regime.reasons, now, diagnostics);
       }
-      const watchResult: ScanResult = {
-        status: "WATCH_ONLY",
+      const fallbackReasons = [
+        ...(liquidityFilterCount === 0
+          ? [`所有候选 24h 成交额低于 ${SCAN_CONFIG.minQuoteVolume24h / 1_000_000}M USDT 成交额下限，已降级为相对最优候选`]
+          : []),
+        fallbackPrimary.rsi14 >= SCAN_CONFIG.rsiExtreme
+          ? `15m RSI ${fallbackPrimary.rsi14.toFixed(1)} 极端过热，等待情绪回落后再执行`
+          : "当前候选未通过完整深度评估，按 1h/15m 相对结构降级推荐",
+      ];
+      const fallbackRisks = unique([
+        "5m/4h 数据不完整",
+        ...(liquidityFilterCount === 0 ? ["成交额低于常规流动性门槛，滑点风险较高"] : []),
+      ]);
+      const fallbackResult: ScanResult = {
+        status: "BUY_ON_PULLBACK",
         symbol: fallbackSymbol,
         baseAsset: fallbackSymbol.replace(/USDT$/, ""),
         price: fallbackPrimary.close,
         score: 0,
         targetPct: SCAN_CONFIG.targetPct,
         marketRegime: regime.regime,
-        reasons: [
-          fallbackPrimary.rsi14 >= SCAN_CONFIG.rsiExtreme
-            ? `15m RSI ${fallbackPrimary.rsi14.toFixed(1)} 极端过热，仅保留观察`
-            : "当前候选未通过完整评估，仅保留观察",
-        ],
-        risks: ["5m/4h 数据不完整"],
+        reasons: fallbackReasons,
+        risks: fallbackRisks,
         metrics: buildMetrics(fallbackPrimary, fallbackTrend, fallbackLiquidity?.spreadPct ?? 0),
         plan: null,
         generatedAt: new Date(now).toISOString(),
@@ -490,22 +526,34 @@ export async function runScan(client: BinanceMarketClient, now: number = Date.no
         marketRank: 1,
         relativeRank: 1,
         confidence: "LOW",
-        topCandidates: [],
+        topCandidates: [{
+          symbol: fallbackSymbol,
+          status: "BUY_ON_PULLBACK",
+          absoluteScore: 0,
+          opportunityScore: 0,
+          hardRiskPassed: true,
+          triggerConfirmed: false,
+        }],
       };
-      return { result: watchResult, diagnostics, cached: false };
+      return { result: fallbackResult, diagnostics, cached: false };
     }
 
+    const resultStatus: ScanStatus = top.status === "WATCH_ONLY" ? "BUY_ON_PULLBACK" : top.status;
     const baseAsset = top.candidate.symbol.replace(/USDT$/, "");
     const result: ScanResult = {
-      status: top.status,
+      status: resultStatus,
       symbol: top.candidate.symbol,
       baseAsset,
       price: top.plan.referencePrice,
-      score: top.status === "WATCH_ONLY" ? 0 : top.score,
+      score: top.score,
       targetPct: SCAN_CONFIG.targetPct,
       marketRegime: regime.regime,
-      reasons: unique(top.reasons),
-      risks: unique(top.risks),
+      reasons: unique(top.status === "WATCH_ONLY"
+        ? [...top.reasons, "未达到直接出手阈值，已按相对结构降级推荐，建议等待回踩确认"]
+        : top.reasons),
+      risks: unique(top.status === "WATCH_ONLY"
+        ? [...top.risks, "当前机会分偏低，轻仓试探或等待更强确认"]
+        : top.risks),
       metrics: top.metrics15m,
       plan: top.plan,
       generatedAt: new Date(now).toISOString(),
@@ -515,7 +563,10 @@ export async function runScan(client: BinanceMarketClient, now: number = Date.no
       marketRank: 1,
       relativeRank: 1,
       confidence,
-      topCandidates: ranked.slice(0, 3).map(toSummary),
+      topCandidates: ranked.slice(0, 3).map((entry, index) => {
+        const summary = toSummary(entry);
+        return index === 0 ? { ...summary, status: resultStatus } : summary;
+      }),
     };
     return { result, diagnostics, cached: false };
   } catch (error: unknown) {

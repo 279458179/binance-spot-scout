@@ -157,7 +157,7 @@ test.describe("home", () => {
     // The handoff must point at the candidate's own spot pair.
     await expect(exchangeLink).toHaveAttribute("href", /SUI_USDT/);
     // A rescan affordance appears both on the card and in the page CTA.
-    await expect(page.getByRole("button", { name: "重新扫描" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /摇币/ }).first()).toBeVisible();
   });
 
   test("does not invent a symbol when scanning is halted", async ({ page }) => {

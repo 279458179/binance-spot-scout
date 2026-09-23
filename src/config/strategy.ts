@@ -18,7 +18,7 @@ export const INTERVALS = {
   macro: "4h",
 } as const;
 
-export const STRATEGY_VERSION = "1.1.0";
+export const STRATEGY_VERSION = "1.2.0";
 
 export const SCAN_CONFIG = {
   /** Take-profit target used for every trade plan. */
