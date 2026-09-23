@@ -20,7 +20,7 @@ export function CandidateHero({ result, recentPrices }: {
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold text-[var(--text-secondary)]">#1 TODAY</p>
+          <p className="text-sm font-medium text-[var(--text-secondary)]">今日首选</p>
           <h1 className="mt-1 text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">{formatSymbolPair(result.symbol)}</h1>
         </div>
         <DecisionBadge status={result.status} />
@@ -28,11 +28,11 @@ export function CandidateHero({ result, recentPrices }: {
       <div className="mt-4 flex items-baseline gap-3">
         <p className="tabular text-3xl font-semibold">{formatPrice(result.price)}</p>
       </div>
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_220px]">
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_240px]">
         <MiniPriceChart prices={recentPrices} entryLow={result.plan?.entryZoneLow} entryHigh={result.plan?.entryZoneHigh} />
         <OpportunityScore score={result.opportunityScore ?? result.score} confidence={result.confidence} />
       </div>
-      {result.plan ? <div className="mt-5"><TradePlanGrid plan={result.plan} /></div> : null}
+      {result.plan ? <div className="mt-8 border-t border-[var(--divider)] pt-7"><TradePlanGrid plan={result.plan} /></div> : null}
     </motion.article>
   );
 }

@@ -41,21 +41,21 @@ export class ErrorBoundary extends Component<
           🙀
         </span>
         <h1 className="text-xl font-semibold">页面出了点问题</h1>
-        <p className="max-w-sm text-sm leading-relaxed text-ink-400">
+        <p className="max-w-sm text-sm leading-relaxed text-[var(--text-secondary)]">
           界面在渲染时遇到了意外情况，可以刷新页面重试。你的钱包和仓位都没有被触碰。
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
             onClick={this.handleReset}
-            className="rounded-2xl bg-mint-500 px-5 py-3 text-sm font-semibold text-night-950"
+            className="rounded-full bg-[var(--brand-primary)] px-5 py-3 text-sm font-medium text-white"
           >
             重试渲染
           </button>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-semibold text-ink-200"
+            className="rounded-full border border-[var(--border-soft)] px-5 py-3 text-sm font-medium text-[var(--text-primary)]"
           >
             刷新页面
           </button>

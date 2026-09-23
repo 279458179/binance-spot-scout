@@ -31,7 +31,7 @@ export type ScanResponse = Omit<ScanPayload, "diagnostics"> & {
 };
 
 /** Shown when the request never reached the Worker (offline / DNS / abort). */
-export const OFFLINE_MESSAGE = "币喵暂时连不上市场 🐱";
+export const OFFLINE_MESSAGE = "暂时连不上市场";
 
 /** Shown when the Worker itself could not reach the exchange. */
 export const DATA_UNAVAILABLE_MESSAGE = "行情源暂时不可用，先别用旧数据做判断。";
@@ -79,7 +79,7 @@ function fallbackMessage(status: number): string {
     return DATA_UNAVAILABLE_MESSAGE;
   }
   if (status === 429) {
-    return "请求太频繁了，缓一小会儿再试 🐾";
+    return "请求太频繁了，缓一小会儿再试";
   }
   return `请求失败（HTTP ${status}）`;
 }

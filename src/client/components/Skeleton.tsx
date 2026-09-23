@@ -3,7 +3,7 @@
  * renders a blank first paint.
  */
 
-const BAR = "animate-pulse rounded-full bg-white/10";
+const BAR = "animate-pulse rounded-full bg-[rgba(0,0,0,.07)]";
 
 /** A single grey bar. */
 export function SkeletonBar({ className = "" }: { className?: string }) {
@@ -22,7 +22,7 @@ export function SkeletonCard() {
       <SkeletonBar className="h-4 w-1/2" />
       <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
         {[0, 1, 2].map((index) => (
-          <div key={index} className="space-y-2 rounded-2xl bg-white/5 p-3">
+          <div key={index} className="space-y-2 rounded-2xl bg-[var(--bg-secondary)] p-3">
             <SkeletonBar className="h-3 w-14" />
             <SkeletonBar className="h-5 w-20" />
           </div>

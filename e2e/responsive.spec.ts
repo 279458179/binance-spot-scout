@@ -154,8 +154,8 @@ for (const viewport of WIDTHS) {
 
       // The plan grid collapses to one column on phones and spreads out on
       // desktop; either way each field must remain readable.
-      for (const label of ["当前价", "理想入场", "+5% 目标", "失效位"]) {
-        await expect(page.getByText(label, { exact: true })).toBeVisible();
+      for (const label of ["当前价", "参考入场", "+5% 目标", "失效位"]) {
+        await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
       }
     });
 
@@ -164,8 +164,8 @@ for (const viewport of WIDTHS) {
       await page.goto("/");
 
       const actions = [
-        page.getByRole("link", { name: "打开 Binance" }),
-        page.getByRole("button", { name: /摇币/ }).first(),
+        page.getByRole("link", { name: "在 Binance 查看" }),
+        page.getByRole("button", { name: "重新扫描" }),
       ];
 
       for (const action of actions) {
@@ -178,7 +178,7 @@ for (const viewport of WIDTHS) {
       }
 
       // Primary navigation must stay reachable at every width.
-      for (const label of ["首页", "历史", "说明"]) {
+      for (const label of ["首页", "历史"]) {
         await expect(page.getByRole("link", { name: label })).toBeVisible();
       }
     });

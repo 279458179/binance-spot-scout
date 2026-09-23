@@ -3,9 +3,9 @@ import { REGIME_LABELS } from "@/client/lib/labels";
 import type { MarketRegime } from "@/shared/types";
 
 const REGIME_TONE: Record<MarketRegime, string> = {
-  RISK_ON: "text-[#6ff0b4]",
-  NEUTRAL: "text-[#c7cedb]",
-  RISK_OFF: "text-[#ff9aae]",
+  RISK_ON: "text-[var(--success)]",
+  NEUTRAL: "text-[var(--text-primary)]",
+  RISK_OFF: "text-[var(--danger)]",
 };
 
 const REGIME_BIAS: Record<MarketRegime, string> = {
@@ -21,8 +21,8 @@ export function MarketPulse({ regime }: { regime: MarketRegime }): ReactNode {
         BTC
         <span className={`font-semibold ${REGIME_TONE[regime]}`}>{REGIME_BIAS[regime]}</span>
       </span>
-      <span>Alt Market <span className="text-[var(--text-primary)]">{REGIME_LABELS[regime]}</span></span>
-      <span>Volatility <span className="text-[var(--text-primary)]">正常</span></span>
+      <span>市场状态 <span className="text-[var(--text-primary)]">{REGIME_LABELS[regime]}</span></span>
+      <span>波动性 <span className="text-[var(--text-primary)]">正常</span></span>
     </section>
   );
 }

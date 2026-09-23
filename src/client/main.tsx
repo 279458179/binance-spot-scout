@@ -14,15 +14,15 @@ import { ResearchPage } from "@/client/pages/ResearchPage";
 /** Fallback screen for unknown routes. */
 function NotFoundPage() {
   return (
-    <section className="rounded-2xl border border-white/5 bg-night-900/60 p-6 text-center">
+    <section className="panel rounded-[var(--radius-xl)] p-8 text-center">
       <p className="text-4xl" aria-hidden>
-        🐾
+        <span className="inline-block size-2 rounded-full bg-[var(--brand-primary)]" aria-hidden />
       </p>
       <h1 className="mt-3 text-lg font-semibold">这里没有猫</h1>
-      <p className="mt-2 text-sm text-ink-400">你访问的页面不存在。</p>
+      <p className="mt-2 text-sm text-[var(--text-secondary)]">你访问的页面不存在。</p>
       <Link
         to="/"
-        className="mt-5 inline-block rounded-full bg-mint-500/15 px-4 py-2 text-sm text-mint-300 transition-colors hover:bg-mint-500/25"
+        className="mt-5 inline-block rounded-full bg-[var(--neutral-bg)] px-4 py-2 text-sm text-[var(--neutral)] transition-colors hover:bg-[rgba(100,116,139,.12)]"
       >
         回到首页
       </Link>

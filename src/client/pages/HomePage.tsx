@@ -9,9 +9,7 @@ import { HeroIntro } from "@/client/components/v11/HeroIntro";
 import { HeroReveal } from "@/client/components/v11/HeroReveal";
 import { MarketContext } from "@/client/components/v11/MarketContext";
 import { RiskInsights, WhyThisCoin } from "@/client/components/v11/InsightLists";
-import { CoinShaker } from "@/client/components/v11/CoinShaker";
 import { ScanProgress } from "@/client/components/v11/ScanProgress";
-import { ScanOrb } from "@/client/components/v11/ScanOrb";
 import { SkeletonCard } from "@/client/components/Skeleton";
 import { useLatestScan } from "@/client/hooks/useLatestScan";
 import { useNow } from "@/client/hooks/useNow";
@@ -46,19 +44,15 @@ export function HomePage(): ReactNode {
   const firstPaint = latest.loading && scan.data === null && latest.data === null;
 
   return (
-    <div className="space-y-5 pt-2">
+      <div className="space-y-10">
       {result !== null ? <MarketContext regime={result.marketRegime} /> : null}
 
       {firstPaint ? (
-        <div className="space-y-5">
-          <SkeletonCard />
-          <ScanOrb />
-        </div>
+        <div className="space-y-5"><SkeletonCard /></div>
       ) : (
         <>
           {scan.loading ? (
             <motion.div variants={fadeInUp} initial="hidden" animate="visible">
-              <CoinShaker />
               <ScanProgress />
             </motion.div>
           ) : null}
@@ -88,7 +82,7 @@ export function HomePage(): ReactNode {
               initial="hidden"
               animate="visible"
               role="alert"
-              className="rounded-2xl bg-coral-950/70 p-4 text-sm leading-relaxed text-coral-300"
+              className="rounded-2xl bg-[var(--danger-bg)] p-4 text-sm leading-relaxed text-[var(--danger)]"
             >
               {error}
             </motion.p>

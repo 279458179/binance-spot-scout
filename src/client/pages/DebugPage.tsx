@@ -56,15 +56,15 @@ export function DebugPage(): ReactNode {
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-4 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink-100">调试</h1>
-          <p className="mt-1 text-xs text-ink-400">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">调试</h1>
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
             漏斗数据与运行状态，仅用于开发排查。
           </p>
         </div>
         <button
           type="button"
           onClick={() => void reload()}
-          className="shrink-0 rounded-full border border-night-600 px-3 py-1 text-xs text-ink-300 transition hover:border-ink-400 hover:text-ink-100"
+          className="shrink-0 rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs text-[var(--text-secondary)] transition hover:border-[var(--text-quaternary)] hover:text-[var(--text-primary)]"
         >
           刷新
         </button>
@@ -73,12 +73,12 @@ export function DebugPage(): ReactNode {
       <motion.div
         variants={fadeInUp}
         initial="hidden"
-        animate="show"
+        animate="visible"
         className="panel px-4 py-4"
       >
         <p className="field-label">服务健康</p>
         {healthError === null ? null : (
-          <p role="alert" className="mt-2 text-xs text-coral-400">
+          <p role="alert" className="mt-2 text-xs text-[var(--danger)]">
             {healthError}
           </p>
         )}
@@ -103,7 +103,7 @@ export function DebugPage(): ReactNode {
       </motion.div>
 
       {error === null ? null : (
-        <p role="alert" className="mt-4 text-xs text-coral-400">
+        <p role="alert" className="mt-4 text-xs text-[var(--danger)]">
           {error}
         </p>
       )}
@@ -116,12 +116,12 @@ export function DebugPage(): ReactNode {
         <motion.div
           variants={fadeInUp}
           initial="hidden"
-          animate="show"
+          animate="visible"
           className="panel mt-4 px-4 py-6 text-center"
         >
-          <p className="text-sm text-ink-200">调试模式未开启</p>
-          <p className="mt-2 text-xs leading-5 text-ink-400">
-            服务端需要设置环境变量 <code className="text-ink-300">ENABLE_DEBUG=true</code>{" "}
+          <p className="text-sm text-[var(--text-secondary)]">调试模式未开启</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
+            服务端需要设置环境变量 <code className="text-[var(--text-secondary)]">ENABLE_DEBUG=true</code>{" "}
             后重新扫描，才会返回漏斗诊断数据。评分与结果本身不受影响。
           </p>
         </motion.div>
@@ -130,15 +130,15 @@ export function DebugPage(): ReactNode {
           <motion.div
             variants={fadeInUp}
             initial="hidden"
-            animate="show"
+            animate="visible"
             className="panel mt-4 px-4 py-4"
           >
             <p className="field-label">漏斗</p>
-            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-300">
+            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
               {stages.map((item) => (
                 <li key={item.stage} className="tabular">
-                  <span className="text-ink-500">{funnelLabel(item.stage)}</span>{" "}
-                  <span className="text-ink-100">
+                  <span className="text-[var(--text-quaternary)]">{funnelLabel(item.stage)}</span>{" "}
+                  <span className="text-[var(--text-primary)]">
                     {item.count === undefined ? "—" : item.count}
                   </span>
                 </li>
@@ -149,7 +149,7 @@ export function DebugPage(): ReactNode {
           <motion.div
             variants={fadeInUp}
             initial="hidden"
-            animate="show"
+            animate="visible"
             className="panel mt-3 px-4 py-4"
           >
             <p className="field-label">本次扫描</p>
@@ -184,7 +184,7 @@ export function DebugPage(): ReactNode {
               </div>
             </div>
             {dataTimestamp === 0 ? null : (
-              <p className="tabular mt-2 text-xs text-ink-500">
+              <p className="tabular mt-2 text-xs text-[var(--text-quaternary)]">
                 采集于 {formatClockMs(dataTimestamp)}
               </p>
             )}
@@ -193,19 +193,19 @@ export function DebugPage(): ReactNode {
           <motion.div
             variants={fadeInUp}
             initial="hidden"
-            animate="show"
+            animate="visible"
             className="panel mt-3 px-4 py-4"
           >
             <p className="field-label">内部候选 Top {topCandidates.length}</p>
             {topCandidates.length === 0 ? (
-              <p className="mt-2 text-xs text-ink-400">
+              <p className="mt-2 text-xs text-[var(--text-tertiary)]">
                 本次没有标的通过初筛，明细为空。
               </p>
             ) : (
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full min-w-[34rem] text-left text-xs">
                   <thead>
-                    <tr className="text-ink-500">
+                    <tr className="text-[var(--text-quaternary)]">
                       <th scope="col" className="py-1 pr-2 font-medium">标的</th>
                       <th scope="col" className="py-1 pr-2 text-right font-medium">评分</th>
                       <th scope="col" className="py-1 pr-2 text-right font-medium">扣分</th>
@@ -215,20 +215,20 @@ export function DebugPage(): ReactNode {
                   </thead>
                   <tbody>
                     {topCandidates.map((entry) => (
-                      <tr key={entry.symbol} className="border-t border-white/5 align-top">
-                        <td className="tabular py-1.5 pr-2 text-ink-100">{entry.symbol}</td>
-                        <td className="tabular py-1.5 pr-2 text-right text-ink-200">
+                      <tr key={entry.symbol} className="border-t border-[var(--divider)] align-top">
+                        <td className="tabular py-1.5 pr-2 text-[var(--text-primary)]">{entry.symbol}</td>
+                        <td className="tabular py-1.5 pr-2 text-right text-[var(--text-secondary)]">
                           {entry.score === null ? "—" : entry.score.toFixed(1)}
                         </td>
-                        <td className="tabular py-1.5 pr-2 text-right text-honey-300">
+                        <td className="tabular py-1.5 pr-2 text-right text-[var(--warning)]">
                           {entry.penalty === null || entry.penalty === 0
                             ? "—"
                             : `-${entry.penalty.toFixed(1)}`}
                         </td>
-                        <td className="py-1.5 pr-2 text-ink-300">
+                        <td className="py-1.5 pr-2 text-[var(--text-secondary)]">
                           {entry.status === null ? "未评分" : STATUS_LABELS[entry.status]}
                         </td>
-                        <td className="py-1.5 text-ink-400">
+                        <td className="py-1.5 text-[var(--text-tertiary)]">
                           {[entry.rejectReason, ...entry.reasons]
                             .filter((line): line is string => line !== null && line.length > 0)
                             .join(" · ") || "—"}
@@ -244,14 +244,14 @@ export function DebugPage(): ReactNode {
           <motion.div
             variants={fadeInUp}
             initial="hidden"
-            animate="show"
+            animate="visible"
             className="panel mt-3 px-4 py-4"
           >
             <p className="field-label">数据源错误</p>
             {diagnostics.providerErrors.length === 0 ? (
-              <p className="mt-2 text-xs text-ink-400">本次没有数据源报错。</p>
+              <p className="mt-2 text-xs text-[var(--text-tertiary)]">本次没有数据源报错。</p>
             ) : (
-              <ul className="mt-2 flex flex-col gap-1 text-xs text-coral-300">
+              <ul className="mt-2 flex flex-col gap-1 text-xs text-[var(--danger)]">
                 {diagnostics.providerErrors.map((message) => (
                   <li key={message} className="break-all">
                     · {message}

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="#quick-start"><img alt="Tests" src="https://img.shields.io/badge/tests-249%20unit%20%2B%2028%20e2e-brightgreen" /></a>
-  <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.2.0-blue" />
+  <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.3.0-blue" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey" />
 </p>
 
@@ -24,7 +24,14 @@
 
 Spot Scout 是一个面向 Binance USDT 现货的 1 日内中短线扫描器。它不简单搬运 24 小时涨幅榜，而是用 Ranking-First 漏斗、跨市场相对强度、四周期结构、机会分与硬风险闸门，给出当前相对最优候选；系统性异常时才显示市场停扫。
 
-> **截图 / GIF 占位**：把首页运行截图放到 `docs/screenshot.png` 并替换这一行即可。
+## Interface
+
+<p align="center">
+  <img src="docs/screenshot-desktop.png" alt="Spot Scout 桌面端界面" width="960" />
+</p>
+<p align="center">
+  <img src="docs/screenshot-mobile.png" alt="Spot Scout 移动端界面" width="320" />
+</p>
 
 ## Features
 
@@ -149,7 +156,7 @@ npm run deploy
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `ENABLE_DEBUG` | `false` | 生产环境是否暴露 `/debug` 与 `diagnostics` |
-| `STRATEGY_VERSION` | `1.2.0` | 写入每次扫描结果与 D1，便于跨版本比较 |
+| `STRATEGY_VERSION` | `1.3.0` | 写入每次扫描结果与 D1，便于跨版本比较 |
 | `BINANCE_BASE_URLS` | 见上 | 可选，逗号分隔的行情站点列表 |
 
 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 只用于 CLI 部署，不要提交到仓库（`.env.example` 仅有变量名）。
@@ -180,7 +187,8 @@ V1 只做 Binance USDT 现货。行情站点可通过 `BINANCE_BASE_URLS` 指向
 
 ## Roadmap
 
-- V1.1（当前）：四态决策、四周期与机会分、History/Research、D1 去重、single-flight、全市场 walk-forward backtest
+- V1.3（当前）：Apple White 界面重构、雷达品牌视觉、移动端与无障碍优化
+- V1.1：四态决策、四周期与机会分、History/Research、D1 去重、single-flight、全市场 walk-forward backtest
 - V2（规划）：可选的交易连接器，必须由 Feature Flag 显式开启，默认关闭
 
 ## License

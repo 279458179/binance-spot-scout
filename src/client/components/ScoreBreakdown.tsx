@@ -12,7 +12,7 @@ interface ScoreBreakdownProps {
 export function ScoreBreakdown({ score }: ScoreBreakdownProps): ReactNode {
   if (score === null) {
     return (
-      <p className="text-sm text-ink-400">评分拆解暂不可用。</p>
+      <p className="text-sm text-[var(--text-tertiary)]">评分拆解暂不可用。</p>
     );
   }
 
@@ -25,15 +25,15 @@ export function ScoreBreakdown({ score }: ScoreBreakdownProps): ReactNode {
         return (
           <div key={item.key} className="space-y-1.5">
             <div className="flex items-baseline justify-between text-sm">
-              <span className="text-ink-200">{item.label}</span>
-              <span className="tabular text-ink-400">
+              <span className="text-[var(--text-secondary)]">{item.label}</span>
+              <span className="tabular text-[var(--text-tertiary)]">
                 {formatScore(value)}
-                <span className="text-ink-500"> / {item.max}</span>
+                <span className="text-[var(--text-quaternary)]"> / {item.max}</span>
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[rgba(0,0,0,0.06)]">
               <div
-                className="h-full rounded-full bg-mint-500/70"
+                className="h-full rounded-full bg-[var(--success)]"
                 style={{ width: `${ratio * 100}%` }}
               />
             </div>
@@ -43,18 +43,18 @@ export function ScoreBreakdown({ score }: ScoreBreakdownProps): ReactNode {
 
       {score.penalty > 0 ? (
         <div className="flex items-baseline justify-between text-sm">
-          <span className="text-coral-300">风险扣分</span>
-          <span className="tabular text-coral-300">
+          <span className="text-[var(--danger)]">风险扣分</span>
+          <span className="tabular text-[var(--danger)]">
             -{formatScore(score.penalty)}
           </span>
         </div>
       ) : null}
 
-      <div className="flex items-baseline justify-between border-t border-white/5 pt-3 text-sm font-semibold">
+      <div className="flex items-baseline justify-between border-t border-[var(--divider)] pt-3 text-sm font-semibold">
         <span>综合评分</span>
-        <span className="tabular text-mint-300">
+        <span className="tabular text-[var(--text-primary)]">
           {formatScore(score.total)}
-          <span className="text-ink-400"> / 100</span>
+          <span className="text-[var(--text-tertiary)]"> / 100</span>
         </span>
       </div>
     </div>

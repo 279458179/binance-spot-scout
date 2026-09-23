@@ -21,16 +21,14 @@ export function FreshnessBadge({
 
   if (expired) {
     return (
-      <span className="pill bg-honey-950 text-honey-300">
-        <span aria-hidden>⚠</span>
+      <span className="pill bg-[var(--warning-bg)] text-[var(--warning)]">
         <span>数据可能已过期 · {formatAge(age)}</span>
       </span>
     );
   }
 
   return (
-    <span className="pill bg-white/5 text-ink-300">
-      <span aria-hidden>🕒</span>
+      <span className="pill bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
       <span>数据更新于 {formatAge(age)}</span>
     </span>
   );

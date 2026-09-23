@@ -1,20 +1,24 @@
 import type { ReactNode } from "react";
 import { Outlet } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 import { AppHeader } from "@/client/components/v11/AppHeader";
 
-/** App shell: brand header, bottom nav and a persistent disclaimer. */
+/** App shell: brand header, normal document flow footer and persistent disclaimer. */
 export function Layout(): ReactNode {
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text-primary)]">
+    <div className="flex min-h-screen flex-col bg-[var(--bg-page)] text-[var(--text-primary)]">
       <AppHeader />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-5">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-8 sm:px-6 sm:pt-12">
         <Outlet />
       </main>
-
-      <footer className="fixed bottom-0 left-0 right-0 z-10 border-t border-white/5 bg-night-950/90 backdrop-blur-md">
-        <div className="mx-auto max-w-3xl px-4 py-3 text-center text-[11px] leading-relaxed text-ink-400 sm:text-xs">
-          仅为行情研究工具，不构成投资建议 · 不接入下单权限 · 请自行承担风险
+      <footer className="border-t border-[var(--divider)] bg-[var(--surface)]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 text-xs text-[var(--text-tertiary)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <span>仅为行情研究工具，不构成投资建议。</span>
+          <nav className="flex gap-4" aria-label="次级导航">
+            <NavLink to="/about">说明</NavLink>
+            <NavLink to="/debug">调试</NavLink>
+          </nav>
         </div>
       </footer>
     </div>

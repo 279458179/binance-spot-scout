@@ -3,70 +3,45 @@
  *
  * Tailwind v4 reads the design tokens from `@theme` below, so every colour used
  * in a component has to be declared here once and is then available as a
- * regular utility class (for example `bg-night-900`, `text-mint-400`).
+ * regular utility class (for example `bg-page`, `text-body`).
  */
 
 @import "tailwindcss";
 @import "./tokens.css";
 
 @theme {
-  /* Surfaces, darkest to lightest. */
-  --color-night-950: #060a18;
-  --color-night-900: #0b1026;
-  --color-night-850: #0f1531;
-  --color-night-800: #141b3d;
-  --color-night-700: #1d2550;
-  --color-night-600: #2b3570;
-
-  /* Text. */
-  --color-ink-100: #eef1ff;
-  --color-ink-200: #d3d9f5;
-  --color-ink-300: #a9b2d8;
-  --color-ink-400: #848eb8;
-  --color-ink-500: #626b92;
-
-  /* Semantic accents. */
-  --color-mint-300: #6ff0b4;
-  --color-mint-400: #34d99a;
-  --color-mint-500: #16b57c;
-  --color-mint-950: #06251b;
-
-  --color-honey-300: #ffd479;
-  --color-honey-400: #f5b544;
-  --color-honey-950: #2a1d05;
-
-  --color-coral-300: #ff9aae;
-  --color-coral-400: #f2637f;
-  --color-coral-950: #2c0c15;
-
-  --color-iris-300: #b0a8ff;
-  --color-iris-400: #8b7ff5;
-  --color-iris-950: #16123a;
-
+  --color-page: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-heading: #1d1d1f;
+  --color-body: #6e6e73;
+  --color-muted: #86868b;
+  --color-brand: #0071e3;
+  --color-success: #16865a;
+  --color-success-bg: #edf9f3;
+  --color-warning: #9a6700;
+  --color-warning-bg: #fff8e5;
+  --color-neutral: #64748b;
+  --color-neutral-bg: #f1f5f9;
+  --color-danger: #d70015;
+  --color-danger-bg: #fff1f2;
   --font-sans:
-    "PingFang SC", "HarmonyOS Sans SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
-    -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Menlo", "Consolas", monospace;
-
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC",
+    "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
   --radius-card: 1.25rem;
 }
 
 @layer base {
   html {
-    color-scheme: dark;
+    color-scheme: light;
     -webkit-text-size-adjust: 100%;
   }
 
   body {
     margin: 0;
     min-height: 100dvh;
-    background-color: var(--color-night-950);
-    background-image:
-      radial-gradient(circle at 12% -10%, rgba(52, 217, 154, 0.14), transparent 45%),
-      radial-gradient(circle at 88% 0%, rgba(139, 127, 245, 0.16), transparent 42%);
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    color: var(--color-ink-100);
+    background-color: var(--color-page);
+    color: var(--color-heading);
     font-family: var(--font-sans);
     font-synthesis-weight: none;
     -webkit-font-smoothing: antialiased;
@@ -75,7 +50,7 @@
   }
 
   ::selection {
-    background-color: rgba(52, 217, 154, 0.32);
+    background-color: rgba(0, 113, 227, 0.16);
   }
 
   button {
@@ -89,18 +64,18 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-mint-400);
+    outline: 2px solid var(--color-brand);
     outline-offset: 2px;
   }
 }
 
 @layer components {
-  /* Frosted panel used by every card on the page. */
+  /* Quiet product surface shared by grouped content. */
   .panel {
     border-radius: var(--radius-card);
-    border: 1px solid rgba(43, 53, 112, 0.75);
-    background-color: rgba(20, 27, 61, 0.72);
-    backdrop-filter: blur(14px);
+    border: 1px solid var(--border-soft);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-card);
   }
 
   /* Small uppercase label above a value. */
@@ -108,14 +83,15 @@
     font-size: 0.6875rem;
     line-height: 1rem;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-ink-500);
+    letter-spacing: 0.01em;
+    text-transform: none;
+    color: var(--color-body);
   }
 
   .field-value {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    color: var(--color-ink-100);
+    color: var(--color-heading);
   }
 
   .pill {

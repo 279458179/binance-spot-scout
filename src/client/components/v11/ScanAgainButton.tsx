@@ -10,9 +10,9 @@ export function ScanAgainButton({ onClick, loading, disabled = false }: { onClic
       onClick={onClick}
       disabled={loading || disabled}
       {...pressable}
-      className="w-full rounded-[var(--radius-md)] border border-[rgba(111,240,180,.32)] bg-[linear-gradient(135deg,rgba(52,217,154,.20),rgba(29,31,36,.94))] px-5 py-4 text-base font-semibold text-[var(--text-primary)] shadow-[0_14px_38px_rgba(52,217,154,.16)] transition hover:border-[rgba(111,240,180,.55)] disabled:cursor-not-allowed disabled:text-[#676b74]"
+      className="w-full rounded-full bg-[var(--brand-primary)] px-7 py-4 text-base font-medium text-white transition-colors hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:bg-[rgba(0,0,0,.08)] disabled:text-[var(--text-quaternary)]"
     >
-      {loading ? "正在摇币…" : "🎲 摇币"}
+      {loading ? "正在扫描" : "重新扫描"}
     </motion.button>
   );
 }

@@ -30,7 +30,7 @@ export function NoTradeCard({
       className="panel space-y-5 p-5 sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="pill bg-white/5 text-ink-200">
+        <span className="pill bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
           {STATUS_LABELS[result.status]}
         </span>
         <FreshnessBadge generatedAt={result.generatedAt} stale={stale} />
@@ -40,7 +40,7 @@ export function NoTradeCard({
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           {STATUS_LABELS[result.status]}
         </h1>
-        <p className="text-sm leading-relaxed text-ink-400">
+        <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
           {notice ?? STATUS_TAGLINES[result.status]}
         </p>
       </div>
@@ -50,8 +50,8 @@ export function NoTradeCard({
           <h3 className="field-label">为什么不出手</h3>
           <ul className="space-y-1.5">
             {result.reasons.map((reason) => (
-              <li key={reason} className="flex gap-2 text-sm leading-relaxed text-ink-300">
-                <span aria-hidden className="text-ink-500">
+              <li key={reason} className="flex gap-2 text-sm leading-relaxed text-[var(--text-secondary)]">
+                <span aria-hidden className="text-[var(--text-quaternary)]">
                   ·
                 </span>
                 <span>{reason}</span>
@@ -66,8 +66,8 @@ export function NoTradeCard({
           <h3 className="field-label">当前市场的主要压力</h3>
           <ul className="space-y-1.5">
             {result.risks.map((risk) => (
-              <li key={risk} className="flex gap-2 text-sm leading-relaxed text-ink-300">
-                <span aria-hidden className="text-coral-300">
+              <li key={risk} className="flex gap-2 text-sm leading-relaxed text-[var(--text-secondary)]">
+                <span aria-hidden className="text-[var(--danger)]">
                   ·
                 </span>
                 <span>{risk}</span>
@@ -82,9 +82,9 @@ export function NoTradeCard({
           type="button"
           onClick={onRescan}
           disabled={rescanning}
-          className="w-full rounded-2xl bg-white/10 px-5 py-3 text-sm font-semibold text-ink-100 transition-colors hover:bg-white/15 disabled:text-ink-500"
+          className="w-full rounded-full bg-[var(--brand-primary)] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[var(--brand-hover)] disabled:text-[var(--text-quaternary)]"
         >
-          {rescanning ? "正在摇币…" : "🎲 摇币"}
+          {rescanning ? "正在扫描" : "重新扫描"}
         </button>
       ) : null}
     </motion.section>

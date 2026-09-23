@@ -15,12 +15,12 @@ export function MiniPriceChart({ prices, entryLow, entryHigh }: {
     <svg viewBox="0 0 100 40" className="h-16 w-full" role="img" aria-label="价格走势">
       <defs>
         <linearGradient id="price-area" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#34d99a" stopOpacity=".28" />
-          <stop offset="100%" stopColor="#34d99a" stopOpacity="0" />
+          <stop offset="0%" stopColor="#0071e3" stopOpacity=".16" />
+          <stop offset="100%" stopColor="#0071e3" stopOpacity="0" />
         </linearGradient>
       </defs>
       <polyline points={`0,40 ${points} 100,40`} fill="url(#price-area)" stroke="none" />
-      <polyline points={points} fill="none" stroke="#34d99a" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
+      <polyline points={points} fill="none" stroke="#0071e3" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

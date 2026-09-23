@@ -152,12 +152,12 @@ test.describe("home", () => {
     await mockApi(page, entryNowResult());
     await page.goto("/");
 
-    const exchangeLink = page.getByRole("link", { name: "打开 Binance" });
+    const exchangeLink = page.getByRole("link", { name: "在 Binance 查看" });
     await expect(exchangeLink).toBeVisible();
     // The handoff must point at the candidate's own spot pair.
     await expect(exchangeLink).toHaveAttribute("href", /SUI_USDT/);
     // A rescan affordance appears both on the card and in the page CTA.
-    await expect(page.getByRole("button", { name: /摇币/ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "重新扫描" })).toBeVisible();
   });
 
   test("does not invent a symbol when scanning is halted", async ({ page }) => {
@@ -180,7 +180,7 @@ test.describe("home", () => {
     await expect(page.getByText("本次扫描没有标的达到 5M USDT 的 24 小时成交额下限")).toBeVisible();
     await expect(page.getByText("成交额下限")).toBeVisible();
     // The empty state must not fall back to a candidate card.
-    await expect(page.getByRole("link", { name: "打开 Binance" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "在 Binance 查看" })).toHaveCount(0);
   });
 
   test("shows the wait-for-pullback state for a stretched but healthy name", async ({ page }) => {
@@ -196,7 +196,7 @@ test.describe("home", () => {
 
     await expect(page.getByText("76", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("回踩", { exact: false }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "打开 Binance" })).toHaveCount(1);
+    await expect(page.getByRole("link", { name: "在 Binance 查看" })).toHaveCount(1);
   });
 
   test("renders without a React error on a detail payload missing optional fields", async ({

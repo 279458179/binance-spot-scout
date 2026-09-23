@@ -115,14 +115,14 @@ export function TargetTracker({
   }, [reached, soundOn, symbol, targetPct, changePct]);
 
   return (
-    <div className="space-y-4 rounded-2xl border border-white/5 bg-white/5 p-4">
+    <div className="space-y-4 rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-[var(--shadow-card)]">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="field-label">实时追踪</h3>
-        <span className="flex items-center gap-2 text-xs text-ink-400">
+        <span className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
           <span
             aria-hidden
             className={`inline-block h-1.5 w-1.5 rounded-full ${
-              snapshot.connected ? "bg-mint-400" : "bg-honey-400"
+              snapshot.connected ? "bg-[var(--success)]" : "bg-[var(--warning)]"
             }`}
           />
           {snapshot.connected ? "已连接" : "连接中…"}
@@ -142,7 +142,7 @@ export function TargetTracker({
           <p className="field-label">涨跌</p>
           <p
             className={`field-value tabular ${
-              changePct !== null && changePct >= 0 ? "text-mint-300" : "text-coral-300"
+              changePct !== null && changePct >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"
             }`}
           >
             {changePct === null ? "—" : formatPercent(changePct)}
@@ -151,7 +151,7 @@ export function TargetTracker({
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-baseline justify-between text-xs text-ink-400">
+        <div className="flex items-baseline justify-between text-xs text-[var(--text-tertiary)]">
           <span>目标 +{targetPct}%</span>
           <span className="tabular">
             {targetPrice === null ? "—" : formatPrice(targetPrice)}
@@ -163,22 +163,22 @@ export function TargetTracker({
           aria-valuemax={100}
           aria-valuenow={Math.round(progress * 100)}
           aria-label={`距离 +${String(targetPct)}% 目标的进度`}
-          className="h-1.5 w-full overflow-hidden rounded-full bg-white/5"
+          className="h-1.5 w-full overflow-hidden rounded-full bg-[rgba(0,0,0,0.06)]"
         >
           <div
             className={`h-full rounded-full transition-[width] duration-500 ${
-              reached ? "bg-mint-400" : "bg-mint-500/70"
+              reached ? "bg-[var(--success)]" : "bg-[var(--success)]/70"
             }`}
             style={{ width: `${String(progress * 100)}%` }}
           />
         </div>
-        <p className="text-xs text-ink-500">已追踪 {Math.floor(elapsedMs / 1000)} 秒</p>
+        <p className="text-xs text-[var(--text-quaternary)]">已追踪 {Math.floor(elapsedMs / 1000)} 秒</p>
       </div>
 
-      {live === null ? <p className="text-sm text-ink-400">正在等待第一笔行情…</p> : null}
+      {live === null ? <p className="text-sm text-[var(--text-tertiary)]">正在等待第一笔行情…</p> : null}
 
       {snapshot.error !== null ? (
-        <p className="text-sm text-honey-300">{snapshot.error}，正在自动重连…</p>
+        <p className="text-sm text-[var(--warning)]">{snapshot.error}，正在自动重连…</p>
       ) : null}
 
       {reached ? (
@@ -186,14 +186,14 @@ export function TargetTracker({
           variants={fadeIn}
           initial="hidden"
           animate="visible"
-          className="rounded-2xl bg-mint-950 px-4 py-3 text-sm font-semibold text-mint-300"
+          className="rounded-[var(--radius-md)] bg-[var(--success-bg)] px-4 py-3 text-sm font-semibold text-[var(--success)]"
         >
-          🎉 达到 +{targetPct}% 目标啦！当前 {formatPercent(changePct)}
+          达到 +{targetPct}% 目标。当前 {formatPercent(changePct)}
         </motion.div>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-xs text-ink-300">
+        <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={soundOn}
@@ -203,7 +203,7 @@ export function TargetTracker({
                 playChime();
               }
             }}
-            className="h-3.5 w-3.5 accent-mint-500"
+            className="h-3.5 w-3.5 accent-[var(--brand-primary)]"
           />
           达标提示音
         </label>
@@ -211,14 +211,14 @@ export function TargetTracker({
           <button
             type="button"
             onClick={onStop}
-            className="ml-auto rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-ink-200"
+            className="ml-auto rounded-[var(--radius-sm)] border border-[var(--border-soft)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
           >
             停止追踪
           </button>
         ) : null}
       </div>
 
-      <p className="text-xs leading-relaxed text-ink-500">
+      <p className="text-xs leading-relaxed text-[var(--text-quaternary)]">
         行情来自 Binance 现货最优买卖价，仅供参考，不构成投资建议。
       </p>
     </div>
