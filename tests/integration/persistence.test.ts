@@ -38,7 +38,7 @@ function makeKv(): { kv: KVNamespace; entries: Map<string, string>; ttls: Map<st
 function makePayload(overrides: Partial<ScanPayload["result"]> = {}): ScanPayload {
   return {
     result: {
-      status: "ENTRY_NOW",
+      status: "BUY_NOW",
       symbol: "SUIUSDT",
       baseAsset: "SUI",
       price: 3.37,
@@ -54,7 +54,7 @@ function makePayload(overrides: Partial<ScanPayload["result"]> = {}): ScanPayloa
         spreadPct: 0.12,
         atrPct: 0.9,
       },
-      plan: { referencePrice: 3.37, target5Pct: 3.5385, invalidation: 3.11 },
+      plan: { referencePrice: 3.37, entryZoneLow: 3.3, entryZoneHigh: 3.41, pullbackPrice: 3.35, target3Pct: 3.4711, target5Pct: 3.5385, invalidation: 3.11, riskReward: 6 },
       generatedAt: "2026-09-22T00:00:00.000Z",
       strategyVersion: "1.0.0",
       ...overrides,
@@ -103,7 +103,7 @@ describe("scan snapshot cache", () => {
 
   it("treats a well-formed but wrong-shaped entry as a miss", async () => {
     const { kv, entries } = makeKv();
-    entries.set(CACHE_KEYS.latestScan, JSON.stringify({ result: { status: "ENTRY_NOW" } }));
+    entries.set(CACHE_KEYS.latestScan, JSON.stringify({ result: { status: "BUY_NOW" } }));
 
     await expect(readLatestScan(kv)).resolves.toBeNull();
   });
@@ -143,6 +143,9 @@ function makeDb(rows: Record<string, unknown>[] = []): {
           // a missing or non-positive id as a failed write.
           return { success: true, meta: { last_row_id: 1 } };
         },
+        async first() {
+          return null;
+        },
         async all() {
           calls.push(record);
           return { results: rows, success: true, meta: {} };
@@ -164,20 +167,21 @@ describe("scan history writes", () => {
     expect(insert).toBeDefined();
     const params = insert!.params;
     expect(params[0]).toBe("2026-09-22T00:00:00.000Z");
-    expect(params[1]).toBe("SUIUSDT");
-    expect(params[3]).toBe(81);
-    expect(params[4]).toBe("ENTRY_NOW");
-    expect(params[5]).toBe("RISK_ON");
-    expect(params[6]).toBeCloseTo(3.5385, 4);
-    expect(params[7]).toBeCloseTo(3.11, 4);
-    expect(JSON.parse(String(params[8]))).toMatchObject({ baseAsset: "SUI", targetPct: 5 });
-    expect(JSON.parse(String(params[9]))).toHaveLength(1);
+    expect(params[1]).toBe("2026-09-22T00:00:00.000Z");
+    expect(params[2]).toBe("SUIUSDT");
+    expect(params[4]).toBe(81);
+    expect(params[5]).toBe("BUY_NOW");
+    expect(params[6]).toBe("RISK_ON");
+    expect(params[7]).toBeCloseTo(3.5385, 4);
+    expect(params[8]).toBeCloseTo(3.11, 4);
+    expect(JSON.parse(String(params[9]))).toMatchObject({ baseAsset: "SUI", targetPct: 5 });
+    expect(JSON.parse(String(params[10]))).toHaveLength(1);
   });
 
   it("stores a no-trade scan with null plan columns so the ratio stays measurable", async () => {
     const { db, calls } = makeDb();
     const payload = makePayload({
-      status: "NO_TRADE",
+      status: "MARKET_HALT",
       symbol: null,
       baseAsset: null,
       price: null,
@@ -190,10 +194,11 @@ describe("scan history writes", () => {
 
     const insert = calls.find((call) => call.sql.includes("INSERT INTO scans"));
     expect(insert!.params[1]).toBeNull();
-    expect(insert!.params[3]).toBe(0);
-    expect(insert!.params[4]).toBe("NO_TRADE");
-    expect(insert!.params[6]).toBeNull();
+    expect(insert!.params[2]).toBeNull();
+    expect(insert!.params[4]).toBe(0);
+    expect(insert!.params[5]).toBe("MARKET_HALT");
     expect(insert!.params[7]).toBeNull();
+    expect(insert!.params[8]).toBeNull();
   });
 
   it("reports a D1 failure as null instead of breaking the response", async () => {
@@ -220,12 +225,19 @@ describe("scan history reads", () => {
         symbol: "SUIUSDT",
         price: 3.37,
         score: 81,
-        status: "ENTRY_NOW",
+        status: "BUY_NOW",
         market_regime: "RISK_ON",
         target_price: 3.5385,
         invalidation_price: 3.11,
         reasons_json: '["15m 回踩 EMA21 后重新站稳"]',
         risks_json: '["距离短线压力位约 3.8%"]',
+        price_1h: 3.47,
+        price_6h: null,
+        price_24h: null,
+        max_gain_24h: 5.2,
+        max_drawdown_24h: -2.1,
+        target3_hit: 1,
+        target5_hit: 1,
       },
     ]);
 
@@ -238,15 +250,25 @@ describe("scan history reads", () => {
         symbol: "SUIUSDT",
         price: 3.37,
         score: 81,
-        status: "ENTRY_NOW",
+        status: "BUY_NOW",
         marketRegime: "RISK_ON",
         targetPrice: 3.5385,
         invalidationPrice: 3.11,
         reasons: ["15m 回踩 EMA21 后重新站稳"],
         risks: ["距离短线压力位约 3.8%"],
+        outcome: {
+          price1h: 3.47,
+          price6h: null,
+          price24h: null,
+          mfePct: 5.2,
+          maePct: -2.1,
+          target3Hit: true,
+          target5Hit: true,
+        },
       },
     ]);
-    expect(calls[0]!.sql).toContain("ORDER BY created_at DESC");
+    expect(calls[0]!.sql).toContain("ORDER BY s.created_at DESC");
+    expect(calls[0]!.sql).toContain("LEFT JOIN scan_results");
     expect(calls[0]!.params).toEqual([50]);
   });
 

@@ -21,6 +21,13 @@ interface ScanRow {
   market_regime: unknown;
   target_price: unknown;
   invalidation_price: unknown;
+  price_1h: unknown;
+  price_6h: unknown;
+  price_24h: unknown;
+  max_gain_24h: unknown;
+  max_drawdown_24h: unknown;
+  target3_hit: unknown;
+  target5_hit: unknown;
   reasons_json: unknown;
   risks_json: unknown;
 }
@@ -40,6 +47,10 @@ function asStringArray(value: unknown): string[] {
   }
 }
 
+function asHitOrNull(value: unknown): boolean | null {
+  return value === 0 ? false : value === 1 ? true : null;
+}
+
 function toHistoryEntry(row: ScanRow): HistoryEntry | null {
   const id = asNumberOrNull(row.id);
   const score = asNumberOrNull(row.score);
@@ -50,7 +61,7 @@ function toHistoryEntry(row: ScanRow): HistoryEntry | null {
   if (typeof row.market_regime !== "string") return null;
   if (!(MARKET_REGIMES as readonly string[]).includes(row.market_regime)) return null;
 
-  return {
+  const entry = {
     id,
     createdAt: row.created_at,
     symbol: typeof row.symbol === "string" ? row.symbol : null,
@@ -63,6 +74,19 @@ function toHistoryEntry(row: ScanRow): HistoryEntry | null {
     reasons: asStringArray(row.reasons_json),
     risks: asStringArray(row.risks_json),
   };
+
+  const outcome = {
+    price1h: asNumberOrNull(row.price_1h),
+    price6h: asNumberOrNull(row.price_6h),
+    price24h: asNumberOrNull(row.price_24h),
+    mfePct: asNumberOrNull(row.max_gain_24h),
+    maePct: asNumberOrNull(row.max_drawdown_24h),
+    target3Hit: asHitOrNull(row.target3_hit),
+    target5Hit: asHitOrNull(row.target5_hit),
+  };
+  const hasOutcome = Object.values(outcome).some((value) => value !== null);
+
+  return hasOutcome ? { ...entry, outcome } : entry;
 }
 
 /**
@@ -74,10 +98,13 @@ export async function queryHistory(db: D1Database, limit: number): Promise<Histo
   try {
     const result = await db
       .prepare(
-        `SELECT id, created_at, symbol, price, score, status, market_regime,
-                target_price, invalidation_price, reasons_json, risks_json
-           FROM scans
-          ORDER BY created_at DESC, id DESC
+        `SELECT s.id, s.created_at, s.symbol, s.price, s.score, s.status, s.market_regime,
+                s.target_price, s.invalidation_price, s.reasons_json, s.risks_json,
+                r.price_1h, r.price_6h, r.price_24h, r.max_gain_24h,
+                r.max_drawdown_24h, r.target3_hit, r.target5_hit
+           FROM scans AS s
+      LEFT JOIN scan_results AS r ON r.scan_id = s.id
+          ORDER BY s.created_at DESC, s.id DESC
           LIMIT ?`,
       )
       .bind(limit)

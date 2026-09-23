@@ -8,15 +8,17 @@
 import type { MarketRegime, PatternKind, ScanStatus } from "@/shared/types";
 
 export const STATUS_LABELS: Record<ScanStatus, string> = {
-  ENTRY_NOW: "结构成立 · 可关注",
-  WAIT_PULLBACK: "等回踩再动",
-  NO_TRADE: "今天不出手",
+  BUY_NOW: "当前最佳候选",
+  BUY_ON_PULLBACK: "等回踩再动",
+  WATCH_ONLY: "仅观察",
+  MARKET_HALT: "市场停扫",
 };
 
 export const STATUS_TAGLINES: Record<ScanStatus, string> = {
-  ENTRY_NOW: "四项结构同时满足，价格还没有偏离参考位太远。",
-  WAIT_PULLBACK: "大方向没问题，但现在的价格追进去不划算。",
-  NO_TRADE: "今天没有满足条件的标的，空仓也是一种仓位。",
+  BUY_NOW: "结构、位置与短周期触发同时满足。",
+  BUY_ON_PULLBACK: "候选成立，但更适合等价格回到计划区。",
+  WATCH_ONLY: "市场偏弱，先观察相对最优候选。",
+  MARKET_HALT: "市场数据或系统性风险触发停扫。",
 };
 
 export const REGIME_LABELS: Record<MarketRegime, string> = {

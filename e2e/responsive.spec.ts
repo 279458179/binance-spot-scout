@@ -27,7 +27,7 @@ const GENERATED_AT = new Date().toISOString();
 
 function entryNowResult(): ScanResult {
   return {
-    status: "ENTRY_NOW",
+    status: "BUY_NOW",
     symbol: "SUIUSDT",
     baseAsset: "SUI",
     price: 3.37,
@@ -37,7 +37,16 @@ function entryNowResult(): ScanResult {
     reasons: ["15m 回踩 EMA21 后重新站稳", "成交量放大 1.8 倍"],
     risks: ["距离短线压力位约 3.8%"],
     metrics: { rsi15m: 61, rsi1h: 58, volumeRatio: 1.8, spreadPct: 0.12, atrPct: 0.9 },
-    plan: { referencePrice: 3.37, target5Pct: 3.5385, invalidation: 3.11 },
+    plan: {
+      referencePrice: 3.37,
+      entryZoneLow: 3.32,
+      entryZoneHigh: 3.39,
+      pullbackPrice: 3.3,
+      target3Pct: 3.4711,
+      target5Pct: 3.5385,
+      invalidation: 3.11,
+      riskReward: 1.55,
+    },
     generatedAt: GENERATED_AT,
     strategyVersion: "1.0.0",
   };
@@ -145,7 +154,7 @@ for (const viewport of WIDTHS) {
 
       // The plan grid collapses to one column on phones and spreads out on
       // desktop; either way each field must remain readable.
-      for (const label of ["参考入场", "目标价", "失效参考"]) {
+      for (const label of ["当前价", "理想入场", "+5% 目标", "失效位"]) {
         await expect(page.getByText(label, { exact: true })).toBeVisible();
       }
     });
@@ -155,7 +164,6 @@ for (const viewport of WIDTHS) {
       await page.goto("/");
 
       const actions = [
-        page.getByRole("button", { name: "开始追踪" }),
         page.getByRole("link", { name: "打开 Binance" }),
         page.getByRole("button", { name: "重新扫描" }).first(),
       ];
@@ -175,12 +183,12 @@ for (const viewport of WIDTHS) {
       }
     });
 
-    test("renders the no-trade state and its reason", async ({ page }) => {
+  test("renders the halt state and its reason", async ({ page }) => {
       await mockApi(
         page,
         {
           ...entryNowResult(),
-          status: "NO_TRADE",
+          status: "MARKET_HALT",
           symbol: null,
           baseAsset: null,
           price: null,
@@ -192,8 +200,8 @@ for (const viewport of WIDTHS) {
       );
       await page.goto("/");
 
-      await expect(page.getByRole("heading", { name: "今天不出手" })).toBeVisible();
-      await expect(page.getByText("为什么不出手")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "市场停扫" })).toBeVisible();
+      await expect(page.getByText("本次扫描没有标的达到 5M USDT 的 24 小时成交额下限")).toBeVisible();
       await expectNoHorizontalOverflow(page, `${viewport.label} no-trade`);
     });
 

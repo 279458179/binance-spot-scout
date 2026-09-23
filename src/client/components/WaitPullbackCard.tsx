@@ -14,7 +14,7 @@ interface WaitPullbackCardProps {
   rescanning?: boolean;
 }
 
-/** WAIT_PULLBACK card: structure holds but the entry price is not there yet. */
+/** Pullback card: the candidate holds, but the planned entry is better. */
 export function WaitPullbackCard({
   result,
   stale = false,
@@ -32,7 +32,7 @@ export function WaitPullbackCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="pill bg-honey-950 text-honey-300">
-          {STATUS_LABELS.WAIT_PULLBACK}
+          {STATUS_LABELS[result.status]}
         </span>
         <FreshnessBadge generatedAt={result.generatedAt} stale={stale} />
       </div>
@@ -42,7 +42,7 @@ export function WaitPullbackCard({
           {formatSymbolPair(result.symbol)}
         </h2>
         <p className="text-sm leading-relaxed text-ink-300">
-          {STATUS_TAGLINES.WAIT_PULLBACK}
+          {STATUS_TAGLINES[result.status]}
         </p>
       </div>
 

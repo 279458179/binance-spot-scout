@@ -31,6 +31,6 @@
   },
   "vars": {
     "ENABLE_DEBUG": "false",
-    "STRATEGY_VERSION": "1.0.0"
+    "STRATEGY_VERSION": "1.1.0"
   }
 }

@@ -5,12 +5,12 @@
 <h1 align="center">币喵雷达 · Spot Scout</h1>
 
 <p align="center">
-  <strong>点击一次，只给你一个候选人。</strong>
+  <strong>当前市场，我只替你挑一个。</strong>
 </p>
 
 <p align="center">
   <a href="#quick-start"><img alt="Tests" src="https://img.shields.io/badge/tests-249%20unit%20%2B%2028%20e2e-brightgreen" /></a>
-  <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.0.0-blue" />
+  <img alt="Strategy version" src="https://img.shields.io/badge/strategy-1.1.0-blue" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey" />
 </p>
 
@@ -22,19 +22,22 @@
 
 ---
 
-Spot Scout 是一个面向 Binance USDT 现货的 1 日内中短线扫描器。它不会简单地从 24 小时涨幅榜里挑第一名，而是综合分析趋势、动量、成交量、流动性、入场结构和追高风险，从市场中筛选一个当前结构相对合理的候选。如果没有合格机会，它会告诉你：今天先不出手。
+Spot Scout 是一个面向 Binance USDT 现货的 1 日内中短线扫描器。它不简单搬运 24 小时涨幅榜，而是用 Ranking-First 漏斗、跨市场相对强度、四周期结构、机会分与硬风险闸门，给出当前相对最优候选；系统性异常时才显示市场停扫。
 
 > **截图 / GIF 占位**：把首页运行截图放到 `docs/screenshot.png` 并替换这一行即可。
 
 ## Features
 
-- **一次只给一个答案** — `ENTRY_NOW` / `WAIT_PULLBACK` / `NO_TRADE` 三选一，不丢给你一长串列表。
-- **硬性风险闸门** — 九条否决规则独立于评分存在，`Risk Gate > Score`：闸门不过，分数再高也不会推荐。
-- **可解释的 100 分模型** — 七个分项全部展示，能点开看到每一项拿了多少分、扣了多少分。
+- **一次只给一个答案** — `BUY_NOW` / `BUY_ON_PULLBACK` / `WATCH_ONLY` / `MARKET_HALT` 四态决策。
+- **Ranking-First 漏斗** — 全市场 → 流动性 Universe → 4h/1h/15m/5m → 风险与机会分 → Top1。
+- **相对机会分** — 在同一轮市场里比较结构、位置、动量与软风险，可执行候选不会被高分但不可执行的标的挡住。
+- **硬性风险闸门** — 系统性异常、数据缺陷与不可控风险优先淘汰；软风险只扣分或降级，不轻易清空候选。
+- **研究结果页** — 按 7 天 / 30 天拆分各决策状态的样本量、命中率、MFE/MAE 与 24 小时表现。
+- **闭环复盘** — 历史时间线展示入场、目标、失效、MFE/MAE、1h/6h/24h 价格与 +3%/+5% 结果。
 - **真实行情** — 只读 Binance 公开现货接口（`exchangeInfo` / `24hr ticker` / `bookTicker` / `klines`），无需 API Key，不接账户权限。
 - **分阶段漏斗** — 全市场 → USDT 现货 → 流动性过滤 → Top 100~120 → 15m+1h → Top 15 → 深度分析 → Top 1，避免对每个币都请求四套 K 线。
 - **实时追踪** — 对选出的标的用 WebSocket 最优买卖价盯住距离 `+5%` 目标还有多远。
-- **历史留痕** — 每次扫描（含 `NO_TRADE`）都写进 D1，`/history` 可以看到这个算法到底准不准。
+- **历史留痕** — 每次扫描（含 `MARKET_HALT`）都写进 D1，`/history` 可以看到这个算法到底准不准。
 - **免费部署** — 一个 `wrangler.jsonc` 覆盖 Static Assets + Worker + KV + D1 + Cron，Fork 后几步就能跑起自己的实例。
 
 ## How it works
@@ -42,62 +45,30 @@ Spot Scout 是一个面向 Binance USDT 现货的 1 日内中短线扫描器。�
 ```
 Binance 全市场
       ↓
-USDT 现货（排除稳定币互换、杠杆代币、非 TRADING）
+Binance 全市场
       ↓
-基础过滤（SymbolInfo 状态 / quoteAsset）
+USDT 现货与基础过滤
       ↓
-流动性过滤（24h 成交额 ≥ 5M USDT、盘口价差 ≤ 0.6%）
+流动性 Universe
       ↓
-Top 100~120
+相对强度初筛
       ↓
-15m + 1h 分析（EMA 结构、斜率、RSI 窗口、偏离 ATR）
+四周期分析（4h / 1h / 15m / 5m，只用收盘 K 线）
       ↓
-Top 15
-      ↓
-5m + 4h 深度分析 → 形态识别 → 支撑/压力 → 评分
-      ↓
-风险闸门（九条否决）
+硬风险闸门 + 机会分排名
       ↓
 Top 1
       ↓
-ENTRY_NOW / WAIT_PULLBACK / NO_TRADE
+BUY_NOW / BUY_ON_PULLBACK / WATCH_ONLY / MARKET_HALT
 ```
 
 ## Strategy
 
-### Scoring
+### Decision Model
 
-| 分项 | 满分 | 主要判据 |
-| --- | ---: | --- |
-| Trend（趋势结构） | 25 | 1h 与 15m 的 EMA9 > EMA21 > EMA55、EMA21 斜率向上、抬高的高点与低点 |
-| Momentum（动能） | 20 | 15m RSI 落在健康区间、MACD 柱状体为正且仍在放大 |
-| Volume（量能） | 15 | 现量 / 20 周期均量、收盘价是否站上 VWAP |
-| Entry Structure（入场位置） | 15 | 距离 EMA21 的 ATR 倍数、形态优先级（A > B > C） |
-| Liquidity（流动性） | 10 | 24h 成交额档位、盘口价差是否处于优选区 |
-| Risk / Reward（盈亏比） | 10 | 到压力位的空间是否够 5%、失效距离是否落在 0.8~2.5 ATR |
-| BTC Regime（市场环境） | 5 | BTC 风险偏好回升 +5 / 中性 0 / 风险规避 −5 |
+机会分以“可执行的相对机会”为核心：硬风险先淘汰，软风险扣分只扣一次；4h 宏观、1h 趋势、15m setup 与 5m trigger 都进入判断。`BUY_NOW` 要求 5m 触发确认且价格距 EMA21 不超过 1.2 ATR；结构好但位置偏高会降级为 `BUY_ON_PULLBACK`；暂无触发但仍可输出符号时为 `WATCH_ONLY`；只有系统性异常才输出 `MARKET_HALT`。
 
-```
-Trend             25
-Momentum          20
-Volume            15
-Entry Structure   15
-Liquidity         10
-Risk / Reward     10
-BTC Regime         5
-----------------------
-Total            100
-```
-
-**为什么是这个币**：每个分项都随结果一起返回（`score` 字段），首页可以展开「查看评分拆解」逐项核对，`/debug` 会展示内部 Top 20 候选与各自的扣分原因 —— 不是黑盒推荐。
-
-### Penalty Engine
-
-只减不加，独立于正向评分：RSI ≥ 82（−15）/ > 75（−8）、偏离 EMA21 超过 3 ATR（−12）/ 2 ATR（−6）、单根 15m 涨幅 ≥ 7%（−8）、24h 涨幅 ≥ 20%（−5）、上影线占比 ≥ 45%（−6）、ATR% 极端（−5）。
-
-### Risk Gate
-
-九条否决规则，任意一条命中即禁止 `ENTRY_NOW`：价差过宽、RSI 极端超买、BTC 快速下跌、上影线过大、距离 EMA21 太远、24h 极端拉升、流动性不足、数据过期、数据不完整。闸门永远优先于评分。
+计划输出包含参考价、理想入场区、回踩参考、+3% / +5% 目标、失效位与风险回报比。`Why This Coin` 与 `Risk Insights` 展示入选理由和风险，`/debug` 保留 Top 候选与漏斗诊断。
 
 ## Quick start
 
@@ -109,8 +80,8 @@ npm run dev          # http://localhost:5173
 无需任何环境变量即可本地运行 —— 默认直连 Binance 公开行情。
 
 ```bash
-npm test             # 249 个单元 / 集成用例
-npm run test:e2e     # 28 个 Playwright 用例（决策流 + 375/390/430/768/1440 响应式）
+npm test             # 单元 / 集成用例
+npm run test:e2e     # Playwright 决策流 + 375/390/430/768/1440 响应式
 npm run typecheck
 npm run lint
 npm run build
@@ -122,7 +93,7 @@ npm run build
 | --- | --- |
 | `npm run dev` | Vite + Cloudflare 插件，本地跑起 Worker 与前端 |
 | `npm run build` | 类型检查 + 产出 `dist/client` 与 Worker bundle |
-| `npm run backtest` | 用历史 K 线回放策略（无未来函数） |
+| `npm run backtest` | 从历史决策时刻重建全市场 Universe 并做 walk-forward 回测 |
 | `npm run smoke-test` | 对真实接口跑一次最小链路自检 |
 
 开发模式下 `/debug` 可访问，生产环境由 `ENABLE_DEBUG=false` 隐藏。
@@ -147,7 +118,11 @@ npx wrangler d1 migrations apply spot_scout_db --remote
 npm run deploy
 ```
 
-`wrangler.jsonc` 已包含 Static Assets、Worker、KV、D1 与 2 分钟一次的 Cron，Cloudflare Workers Builds 连接仓库后 push 即自动 Build & Deploy。
+`wrangler.jsonc` 已包含 Static Assets、Worker、KV、D1 与 2 分钟一次的 Cron。部署前请执行 `npx wrangler d1 migrations apply spot_scout_db --remote`，确保 v1.1 去重与 outcome 字段已应用。
+
+## Data Integrity
+
+同一个 symbol + 状态 + 15m 决策 K 线只写一个统计样本；数据库层使用唯一索引兜底。`POST /api/scan` 有内存 single-flight 和每 IP 限流，`GET /api/symbol/:symbol` 也有限流。首页扫描默认 30 秒冷却。
 
 > **地域限制提示（重要）**：Binance 会按网段拒绝请求（HTTP 451 / 403），
 > 官方公开镜像在部分数据中心出口上完全不可达。本项目内置
@@ -157,7 +132,7 @@ npm run deploy
 > 需要注意：回退到的 **US 场地流动性远低于全球主站**（其最深的 `BTCUSDT`
 > 24h 成交额约 4–5M USDT），而策略的流动性下限是硬性的 **5M USDT**
 > （见 [Strategy](#strategy) 与 `SCAN_CONFIG.minQuoteVolume24h`）。因此**部署在受限
-> 网段时，扫描会如实返回 `NO_TRADE`，并说明“没有标的达到成交额下限”** ——
+> 网段时，扫描会如实返回 `MARKET_HALT`，并说明“没有标的达到成交额下限”** ——
 > 这是风控在正常工作，而不是接口故障。本项目**不会**为了产出信号而自动放宽这个
 > 下限：低流动性带来的滑点正是策略要规避的风险。
 >
@@ -174,24 +149,26 @@ npm run deploy
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `ENABLE_DEBUG` | `false` | 生产环境是否暴露 `/debug` 与 `diagnostics` |
-| `STRATEGY_VERSION` | `1.0.0` | 写入每次扫描结果与 D1，便于跨版本比较 |
+| `STRATEGY_VERSION` | `1.1.0` | 写入每次扫描结果与 D1，便于跨版本比较 |
 | `BINANCE_BASE_URLS` | 见上 | 可选，逗号分隔的行情站点列表 |
 
 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 只用于 CLI 部署，不要提交到仓库（`.env.example` 仅有变量名）。
 
 ## Backtest
 
-`npm run backtest` 按时间切片回放：扫描 10:00 的那一轮只使用 10:00 之前的数据，不含未来函数。回测结果写入 `scan_results` 表，记录信号之后 5m / 1h / 6h / 24h 的价格、最大涨幅与最大回撤，以及 `+5%` 目标是否命中。
+`npm run backtest` 从历史 15m 决策 K 线出发，先用当时已收盘的数据重建 24h 成交额排名和 `Top 120` Universe，再执行 `Top 120 → Top 30 → Top 1` 策略漏斗，并统计信号之后 1h / 6h / 24h 收益、最大涨幅、最大回撤与 `+3%` / `+5%` 命中。可运行 `npm run backtest -- --days=N`（1–30 天）。
+
+> **当前限制**：Binance 不提供历史 `exchangeInfo`，回测使用当前可交易 USDT Universe 近似当时市场；缺少当时 K 线的标的会被自然排除。历史 spread 也无法还原，因此使用固定的 `0.1%` 近似。
 
 ## FAQ
 
 **它会不会替我下单？**
-不会。V1 只读公开行情，不接入任何账户权限，也不存在买卖 / 提现 / 划转接口。
+不会。只读公开行情，不接入任何账户权限，也不存在买卖 / 提现 / 划转接口。
 
-**为什么经常显示「今天不出手」？**
-因为闸门和分数都是有意收紧的。筛选器宁可空仓，也不把追高的标的塞给你。
+**为什么有时显示「市场停扫」？**
+这只在系统性异常、数据不可用或 BTC 快速崩跌时出现；普通软风险只会降级为回踩或观望。
 
-**`ENTRY_NOW` 是可以买的意思吗？**
+**`BUY_NOW` 是可以买的意思吗？**
 不是。它表示「当前结构值得关注」，是研究结论而非投资建议，请自行判断并控制风险。
 
 **可以换成别的交易所吗？**
@@ -203,7 +180,7 @@ V1 只做 Binance USDT 现货。行情站点可通过 `BINANCE_BASE_URLS` 指向
 
 ## Roadmap
 
-- V1（当前）：只读行情、单候选、三态决策、历史留痕
+- V1.1（当前）：四态决策、四周期与机会分、History/Research、D1 去重、single-flight、全市场 walk-forward backtest
 - V2（规划）：可选的交易连接器，必须由 Feature Flag 显式开启，默认关闭
 
 ## License

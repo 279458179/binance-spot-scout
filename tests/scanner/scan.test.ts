@@ -79,6 +79,25 @@ const BTC_CALM_1H: SeriesSegment[] = [
   { count: 20, from: 101.6, to: 101.9, volume: 600 },
 ];
 
+const CALM_5M: SeriesSegment[] = [
+  { count: 110, from: 100, to: 101.4, volume: 600 },
+  { count: 10, from: 101.4, to: 101.6, volume: 600 },
+];
+
+const ALT_4H_SEGMENTS: SeriesSegment[] = [
+  { count: 110, from: 100, to: 101.6, volume: 600 },
+  { count: 10, from: 101.6, to: 101.9, volume: 600 },
+];
+
+const BTC_4H_SEGMENTS: SeriesSegment[] = [
+  { count: 110, from: 100, to: 101.6, volume: 600 },
+  { count: 10, from: 101.6, to: 101.9, volume: 600 },
+];
+
+const STABLE_5M_KLINES = makeSeries("5m", CALM_5M);
+const STABLE_BTC_4H_KLINES = makeSeries("4h", BTC_4H_SEGMENTS);
+const STABLE_ALT_4H_KLINES = makeSeries("4h", ALT_4H_SEGMENTS);
+
 /** BTC dumping ~4% inside the newest 1h candle — the crash veto trigger. */
 const BTC_CRASH_1H: SeriesSegment[] = [
   { count: 100, from: 100, to: 101.6, volume: 600 },
@@ -98,6 +117,7 @@ const ALT_TICKER_DEFAULTS: Partial<Ticker24h> = {
 interface MarketOptions {
   alt15m?: readonly SeriesSegment[];
   alt1h?: readonly SeriesSegment[];
+  alt5m?: readonly SeriesSegment[];
   btc1h?: readonly SeriesSegment[];
   altTicker?: Partial<Ticker24h>;
   btcTicker?: Partial<Ticker24h>;
@@ -117,25 +137,35 @@ function makeMarket(options: MarketOptions = {}) {
       altTicker,
       makeTicker({ symbol: BTC, lastPrice: 101.6, quoteVolume: 5_000_000_000, ...options.btcTicker }),
     ],
-    books: [altBook],
+    books: [
+      altBook,
+      makeBook({ symbol: BTC, bidPrice: 101.59, askPrice: 101.61 }),
+    ],
     klines: {
       [`${ALT}|15m`]: makeSeries("15m", options.alt15m ?? alt15mSegments(104.5), ALT_15M_SHAPE),
       [`${ALT}|1h`]: makeSeries("1h", options.alt1h ?? ALT_1H_SEGMENTS, ALT_1H_SHAPE),
       [`${BTC}|15m`]: makeSeries("15m", BTC_CALM_15M),
       [`${BTC}|1h`]: makeSeries("1h", options.btc1h ?? BTC_CALM_1H),
+      [`${ALT}|4h`]: STABLE_ALT_4H_KLINES,
+      [`${BTC}|4h`]: STABLE_BTC_4H_KLINES,
+    },
+    fallbackKlines: {
+      "5m": options.alt5m ? makeSeries("5m", options.alt5m, { finalVolume: 700 }) : STABLE_5M_KLINES,
+      "4h": STABLE_BTC_4H_KLINES,
+      "15m": [],
     },
   });
 }
 
 describe("Scenario 1 — healthy trend with an EMA21 pullback reclaim", () => {
-  it("returns ENTRY_NOW with a tradable plan", async () => {
+  it("returns BUY_NOW with a tradable plan", async () => {
     const payload = await runScan(makeMarket());
     const { result, diagnostics } = payload;
 
-    expect(result.status).toBe("ENTRY_NOW");
+    expect(result.status).toBe("BUY_NOW");
     expect(result.symbol).toBe(ALT);
     expect(result.baseAsset).toBe("AAA");
-    expect(result.score).toBeGreaterThanOrEqual(SCAN_CONFIG.entryScore);
+    expect(result.score).toBeGreaterThanOrEqual(SCAN_CONFIG.buyNowScore);
     expect(result.score).toBe(diagnostics.topScore);
     expect(result.marketRegime).toBe("RISK_ON");
 
@@ -144,8 +174,60 @@ describe("Scenario 1 — healthy trend with an EMA21 pullback reclaim", () => {
     expect(result.plan?.target5Pct).toBeCloseTo(result.plan!.referencePrice * 1.05, 6);
     expect(result.plan?.invalidation).toBeLessThan(result.plan!.referencePrice);
 
-    expect(diagnostics.candidateCount).toBe(1);
+    expect(diagnostics.candidateCount).toBe(2);
     expect(diagnostics.providerErrors).toEqual([]);
+  });
+});
+
+describe("Closed candle invariant", () => {
+  it("ignores an unclosed 15m candle and keeps the closed decision", async () => {
+    const openSegments = alt15mSegments(104.5);
+    const openMetrics = buildIntervalMetrics(
+      "15m",
+      makeSeries("15m", openSegments, { ...ALT_15M_SHAPE, closeTimeOffsetMs: 5_000 }),
+    );
+    const closedSeries = makeSeries("15m", openSegments, ALT_15M_SHAPE).slice(0, -1);
+    const closedMetrics = buildIntervalMetrics("15m", closedSeries);
+
+    expect(openMetrics?.close).not.toEqual(closedMetrics?.close);
+
+    const { result } = await runScan(
+      makeMarket({
+        alt15m: openSegments,
+        alt1h: ALT_1H_SEGMENTS.map((segment) => ({ ...segment })),
+        btc1h: BTC_CALM_1H.map((segment) => ({ ...segment })),
+      }),
+    );
+
+    expect(result.status).toBe("BUY_NOW");
+  });
+});
+
+describe("Ranking-first invariants", () => {
+  it("does not let a rejected stronger name hide a tradable weaker name", async () => {
+    const { result, diagnostics } = await runScan(makeMarket({ alt15m: alt15mBlowOffSegments() }));
+
+    expect(result.status).toBe("WATCH_ONLY");
+    expect(diagnostics.topCandidates.find((entry) => entry.symbol === ALT)?.score).toBe(26);
+    expect(diagnostics.topCandidate).toBe(BTC);
+  });
+
+  it("records the Top1/Top2 opportunity gap in final confidence", async () => {
+    const { diagnostics } = await runScan(makeMarket());
+
+    const evaluated = diagnostics.topCandidates.filter((entry) => entry.score !== null);
+    expect(evaluated.length).toBeGreaterThan(0);
+    expect(evaluated[0]?.confidence).toBeDefined();
+  });
+});
+
+describe("Four-timeframe resonance", () => {
+  it("uses the 4h macro and 5m trigger when confirming BUY_NOW", async () => {
+    const { result } = await runScan(makeMarket());
+
+    expect(result.status).toBe("BUY_NOW");
+    expect(result.reasons.join(" ")).toContain("4h");
+    expect(result.reasons.join(" ")).toContain("5m");
   });
 });
 
@@ -158,18 +240,19 @@ describe("Scenario 2 — blow-off top with extreme 15m RSI", () => {
 
     const { result } = await runScan(makeMarket({ alt15m: segments }));
 
-    expect(result.status).toBe("NO_TRADE");
+    expect(result.status).toBe("WATCH_ONLY");
     expect(result.score).toBe(0);
   });
 });
 
 describe("Scenario 3 — good trend, price stretched away from EMA21", () => {
-  it("downgrades to WAIT_PULLBACK instead of chasing", async () => {
-    const { result, diagnostics } = await runScan(makeMarket({ alt15m: alt15mSegments(104.9) }));
+  it("downgrades to BUY_ON_PULLBACK instead of chasing", async () => {
+    const { result, diagnostics } = await runScan(makeMarket({ alt15m: alt15mSegments(104.45) }));
 
-    expect(result.status).toBe("WAIT_PULLBACK");
-    expect(result.score).toBeGreaterThanOrEqual(SCAN_CONFIG.watchScore);
-    expect(result.score).toBeLessThan(SCAN_CONFIG.entryScore);
+
+    expect(result.status).toBe("BUY_ON_PULLBACK");
+    expect(result.score).toBeGreaterThanOrEqual(SCAN_CONFIG.pullbackScore);
+    expect(result.score).toBeLessThan(SCAN_CONFIG.buyNowScore);
     expect(result.score).toBe(diagnostics.topScore);
   });
 });
@@ -180,12 +263,12 @@ describe("Scenario 4 — thin liquidity", () => {
       makeMarket({ altTicker: { quoteVolume: 3_000_000 } }),
     );
 
-    expect(result.status).toBe("NO_TRADE");
+    expect(result.status).toBe("WATCH_ONLY");
     expect(result.symbol).not.toBe(ALT);
     // The thin name never reaches the volume floor, so the altcoin is absent
     // from the liquidity stage and nothing is scored on it.
     expect(diagnostics.topCandidate).not.toBe(ALT);
-    expect(diagnostics.candidateCount).toBe(0);
+    expect(diagnostics.candidateCount).toBe(1);
   });
 
   it("names the volume floor when no symbol is liquid enough to scan", async () => {
@@ -198,7 +281,7 @@ describe("Scenario 4 — thin liquidity", () => {
 
     expect(diagnostics.universeCount).toBe(2);
     expect(diagnostics.liquidityFilterCount).toBe(0);
-    expect(result.status).toBe("NO_TRADE");
+    expect(result.status).toBe("WATCH_ONLY");
     // A thin venue must not read as a quiet market.
     expect(result.reasons[0]).toContain("成交额下限");
   });
@@ -213,14 +296,14 @@ describe("debug diagnostics", () => {
     expect(best?.symbol).toBe(ALT);
     expect(best?.score).toBe(diagnostics.topScore);
     expect(best?.penalty).toBe(0);
-    expect(best?.status).toBe("ENTRY_NOW");
+    expect(best?.status).toBe("BUY_NOW");
     // The winning row is the answer, so it is not rejected for anything.
     expect(best?.rejectReason).toBeNull();
   });
 
   it("records which coarse-screen check dropped a candidate", async () => {
     const { diagnostics } = await runScan(
-      makeMarket({ alt15m: alt15mSegments(108) }),
+      makeMarket({ alt15m: alt15mSegments(112) }),
     );
 
     const rejected = diagnostics.topCandidates.filter((entry) => entry.score === null);
@@ -232,18 +315,19 @@ describe("debug diagnostics", () => {
   it("explains the runner-up by comparing it against the winning score", async () => {
     const { diagnostics } = await runScan(makeMarket());
 
-    if (diagnostics.topCandidates.length > 1) {
-      const runnerUp = diagnostics.topCandidates[1];
+    const evaluated = diagnostics.topCandidates.filter((entry) => entry.score !== null);
+    if (evaluated.length > 1) {
+      const runnerUp = evaluated[1];
       expect(runnerUp?.rejectReason).toContain("低于本次最佳候选的");
     }
   });
 });
 
 describe("Scenario 5 — BTC crashes while the altcoin still looks fine", () => {
-  it("never reports ENTRY_NOW on a fast market-wide drop", async () => {
+  it("never reports BUY_NOW on a fast market-wide drop", async () => {
     const { result } = await runScan(makeMarket({ btc1h: BTC_CRASH_1H }));
 
-    expect(result.status).toBe("NO_TRADE");
+    expect(result.status).toBe("MARKET_HALT");
     expect(result.reasons.join(" ")).toContain("BTC");
   });
 });

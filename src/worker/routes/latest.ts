@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { readLatestScan, writeLatestScan } from "@/lib/cache";
 import type { ScanPayload } from "@/shared/types";
 import type { Env } from "../env";
-import { scanMarket } from "../services/scan";
+import { scanWithSingleFlight } from "../services/scan-flight";
 
 export const latestRoute = new Hono<{ Bindings: Env }>();
 
@@ -14,7 +14,7 @@ latestRoute.get("/", async (c) => {
     return c.json(payload);
   }
 
-  const fresh = await scanMarket(c.env.BINANCE_BASE_URLS);
+  const fresh = await scanWithSingleFlight(c.env.BINANCE_BASE_URLS);
   await writeLatestScan(c.env.SCAN_CACHE, fresh);
   const payload: ScanPayload = { ...fresh, cached: false };
   return c.json(payload);

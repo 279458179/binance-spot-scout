@@ -246,6 +246,8 @@ export interface FakeClientData {
   books: readonly BookTicker[];
   /** Klines keyed by `${symbol}|${interval}`. */
   klines: Readonly<Record<string, readonly Kline[]>>;
+  /** Fallback keyed by interval when a symbol/interval pair has no explicit fixture. */
+  fallbackKlines?: Readonly<Record<string, readonly Kline[]>>;
   /** Per-symbol ticker tweaks merged over the market-wide entry. */
   tickerOverrides?: Readonly<Record<string, Partial<Ticker24h>>>;
 }
@@ -275,7 +277,7 @@ export function makeFakeClient(data: FakeClientData): BinanceMarketClient {
       return data.books.filter((book) => wanted.has(book.symbol));
     },
     async klines(symbol: string, interval: string) {
-      return [...(data.klines[`${symbol}|${interval}`] ?? [])];
+      return [...(data.klines[`${symbol}|${interval}`] ?? data.fallbackKlines?.[interval] ?? [])];
     },
   } as unknown as BinanceMarketClient;
 }

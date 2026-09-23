@@ -1,26 +1,21 @@
 /**
- * The scan orchestrator: drives the funnel from raw Binance market data down to
- * a single Chinese-language decision.
+ * Ranking-first scan orchestrator.
  *
- * Ordering rules that must not drift:
- * - The risk gate always wins over the score, so a blocked candidate can never
- *   be shown as `ENTRY_NOW`.
- * - `ENTRY_NOW` needs `score >= 78`; the 70–78 band is a watchlist entry only.
- * - Freshness is enforced twice: once inside the gate, and once here as a
- *   belt-and-braces demotion when the payload is older than the freshness window.
- *
- * Everything is read-only market data. No API keys, no account state, no orders.
+ * A healthy market always produces a Top 1 candidate. Hard risks remove only
+ * unusable names; strategy imperfections lower opportunity score and change
+ * whether the result is executable now, executable on a pullback, or watch-only.
  */
 
-import { INTERVALS, SCAN_CONFIG, STRATEGY_VERSION } from "@/config/strategy";
+import { INTERVALS, REGIME_CONFIG, SCAN_CONFIG, STRATEGY_VERSION } from "@/config/strategy";
 import type { BinanceMarketClient } from "@/lib/binance";
 import { BinanceError, describeBinanceError, isBinanceError } from "@/lib/binance";
+import { filterClosedKlines } from "@/lib/market/candles";
 import { buildIntervalMetrics } from "@/lib/indicators/metrics";
 import type {
   BookTicker,
   CandidateMetrics,
   DebugCandidate,
-  Interval,
+  Confidence,
   IntervalMetrics,
   Kline,
   ScanDiagnostics,
@@ -30,282 +25,194 @@ import type {
   Ticker24h,
   TradePlan,
 } from "@/shared/types";
+import { assessMacro, assessTrigger } from "./four-timeframe";
 import type { LiquidityCandidate } from "./liquidity";
 import { buildLiquidityCandidates, selectTechnicalScanSet } from "./liquidity";
 import { assessMarketRegime } from "./market-regime";
 import type { MarketRegimeAssessment } from "./market-regime";
 import { bestPattern, detectPatterns } from "./patterns";
+import { confidenceFromRanking, opportunityScore } from "./opportunity-score";
 import { evaluateRiskGate } from "./risk-gate";
+import { relativeStrength } from "./relative-strength";
 import { scoreCandidate } from "./scoring";
 import { detectSupportResistance } from "./support-resistance";
 import { buildUniverse } from "./universe";
 
-/**
- * How many candidates the debug payload keeps, best first. Spec #70 asks for the
- * internal Top 20; the cap also bounds the cached payload size.
- */
 const DEBUG_CANDIDATE_LIMIT = 20;
-/** Concurrency for the candidate-level kline fan-out, kept clear of the client cap. */
 const KLINE_CONCURRENCY = 6;
-/** Klines per interval per symbol; matches the configured scorer lookback. */
 const KLINE_LIMIT = SCAN_CONFIG.klineLimit;
-/** Chinese copy for a scan that produced no tradable candidate at all. */
-const NO_CANDIDATE_REASON = "本次扫描没有找到同时满足流动性与形态条件的标的";
-
-/**
- * Chinese copy for the case where the volume floor alone emptied the funnel.
- *
- * Worth its own message: the generic "no candidate" wording reads like a quiet
- * market, but an empty liquidity stage is usually the venue's fault — a mirror
- * that lists fewer, thinner pairs — and the user cannot tell the two apart
- * without being told. The floor itself is never lowered to manufacture a result.
- */
-function emptyFunnelReason(universeCount: number, liquidityCount: number, spreadCount: number): string {
-  if (universeCount > 0 && liquidityCount === 0) {
-    return `本次扫描没有标的达到 ${SCAN_CONFIG.minQuoteVolume24h / 1_000_000}M USDT 的 24 小时成交额下限`;
-  }
-  if (liquidityCount > 0 && spreadCount === 0) {
-    return `本次扫描的标的买卖价差都超过 ${SCAN_CONFIG.maxSpreadPct}% 上限，滑点风险过高`;
-  }
-  return NO_CANDIDATE_REASON;
-}
-/** Chinese copy for the second freshness check performed after scoring. */
-const STALE_DEMOTION_REASON = "数据超过 5 分钟未更新，先等待回踩确认";
-
-/** Human-readable Chinese text for the machine-readable gate warnings. */
-const WARNING_LABELS: Readonly<Record<string, string>> = {
-  DATA_STALE: "数据超过 5 分钟未更新",
-  BTC_RISK_OFF: "BTC 处于风险规避状态",
-  EXTENDED_FROM_EMA21: "价格偏离 EMA21 较远",
-  THIN_LIQUIDITY: "流动性偏薄",
-  NEWS_UNAVAILABLE: "新闻面数据不可用",
+const STATUS_PRIORITY: Record<ScanStatus, number> = {
+  BUY_NOW: 3,
+  BUY_ON_PULLBACK: 2,
+  WATCH_ONLY: 1,
+  MARKET_HALT: 0,
 };
 
-/** A candidate that cleared every filter, with its metrics already computed. */
 interface EvaluatedCandidate {
   candidate: LiquidityCandidate;
   ticker: Ticker24h;
   metrics15m: CandidateMetrics;
-  lastCandleMovePct: number;
+  trend1h: IntervalMetrics;
+  setup15m: IntervalMetrics;
+  macro4h: IntervalMetrics;
+  trigger5m: ReturnType<typeof assessTrigger>;
   score: number;
-  /** Points removed by the penalty engine, kept for the debug view. */
   penalty: number;
+  opportunity: number;
   status: ScanStatus;
   reasons: string[];
   risks: string[];
   plan: TradePlan;
   evaluatedAt: number;
+  recentKlines: readonly Kline[];
+  recentPrices: number[];
 }
 
-function warningLabel(code: string): string {
-  return WARNING_LABELS[code] ?? code;
-}
-
-/** Deduplicates while preserving first-seen order. */
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
-/**
- * Runs `worker` over `items` with a bounded number of in-flight promises.
- *
- * The client's own pool helper is private and capped lower than we need, so the
- * fan-out is kept local and deliberately small.
- */
-async function mapWithConcurrency<TItem, TResult>(
-  items: readonly TItem[],
-  limit: number,
-  worker: (item: TItem) => Promise<TResult>,
-): Promise<TResult[]> {
-  const results: TResult[] = new Array<TResult>(items.length);
-  let nextIndex = 0;
-
-  async function run(): Promise<void> {
-    for (;;) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= items.length) return;
-      results[index] = await worker(items[index]);
+async function mapWithConcurrency<TInput, TOutput>(
+  values: readonly TInput[],
+  concurrency: number,
+  worker: (value: TInput) => Promise<TOutput>,
+): Promise<TOutput[]> {
+  const results: TOutput[] = new Array(values.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (cursor < values.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(values[index]!);
     }
-  }
-
-  const runners: Promise<void>[] = [];
-  const runnerCount = Math.max(1, Math.min(limit, items.length));
-  for (let index = 0; index < runnerCount; index += 1) {
-    runners.push(run());
-  }
+  });
   await Promise.all(runners);
   return results;
 }
 
-/** The single-candle body move of the newest candle, in percent. */
 function lastCandleMovePct(klines: readonly Kline[]): number {
   const last = klines[klines.length - 1];
-  if (!last || !Number.isFinite(last.open) || last.open <= 0) return 0;
-  return ((last.close - last.open) / last.open) * 100;
-}
-
-/** BTC's change over the most recent hour, sign-flipped so a drop is positive. */
-function btcDropPct1h(klines: readonly Kline[]): number | null {
-  const last = klines[klines.length - 1];
   const previous = klines[klines.length - 2];
-  if (!last || !previous) return null;
-  if (!Number.isFinite(previous.close) || previous.close <= 0) return null;
-  return ((previous.close - last.close) / previous.close) * 100;
+  if (!last || !previous?.close) return 0;
+  return ((last.close - previous.close) / previous.close) * 100;
 }
 
 function buildMetrics(
-  primary: { rsi14: number; volumeRatio: number; atrPct: number },
-  trend: { rsi14: number },
-  spread: number,
+  primary: IntervalMetrics,
+  trend: IntervalMetrics,
+  spreadPct: number,
 ): CandidateMetrics {
   return {
     rsi15m: primary.rsi14,
     rsi1h: trend.rsi14,
     volumeRatio: primary.volumeRatio,
-    spreadPct: spread,
+    spreadPct,
     atrPct: primary.atrPct,
   };
 }
 
-/** Fetch metrics for one interval, discarding null snapshots. */
-async function metricsFor(
-  client: BinanceMarketClient,
-  symbol: string,
-  interval: Interval,
-): Promise<IntervalMetrics | null> {
-  const klines = await client.klines(symbol, interval, KLINE_LIMIT);
-  return buildIntervalMetrics(interval, klines);
+function buildTradePlan(
+  price: number,
+  metrics: IntervalMetrics,
+  support: number,
+): TradePlan {
+  const atr = Math.max(metrics.atr14, price * 0.0015);
+  const nearSupport = Math.min(Math.max(metrics.vwap, support), price * 0.995);
+  const zoneLow = Math.min(nearSupport, price - atr * 0.25);
+  const zoneHigh = Math.min(price + atr * 0.35, Math.max(zoneLow * 1.005, price + atr * 0.35));
+  const entryZoneLow = Math.max(zoneLow, price * 0.985);
+  const entryZoneHigh = Math.max(zoneHigh, entryZoneLow * 1.005);
+  const pullbackPrice = Math.min(price, (entryZoneLow + entryZoneHigh) / 2);
+  const risk = Math.max(price - entryZoneLow, atr * 0.35, price * 0.002);
+  return {
+    referencePrice: price,
+    entryZoneLow,
+    entryZoneHigh,
+    pullbackPrice,
+    target3Pct: price * 1.03,
+    target5Pct: price * 1.05,
+    invalidation: Math.min(entryZoneLow - atr * 0.5, support),
+    riskReward: Number(((price * 1.05 - price) / risk).toFixed(2)),
+  };
 }
 
-/**
- * Fetches the 15m and 1h snapshots for every shortlisted symbol.
- *
- * A symbol that fails or returns an unusable series is dropped rather than
- * aborting the scan; the failure is recorded so `/debug` can show it.
- */
+function decisionFrom(
+  opportunity: number,
+  triggerConfirmed: boolean,
+  distanceFromEma21Atr: number,
+): ScanStatus {
+  if (opportunity >= SCAN_CONFIG.buyNowScore && triggerConfirmed && distanceFromEma21Atr <= 1.2) return "BUY_NOW";
+  if (opportunity >= SCAN_CONFIG.pullbackScore) return "BUY_ON_PULLBACK";
+  return "WATCH_ONLY";
+}
+
+function triggerReasons(trigger: ReturnType<typeof assessTrigger>): string[] {
+  return trigger.reasons;
+}
+
+function debugFromCandidate(candidate: EvaluatedCandidate): DebugCandidate {
+  return {
+    symbol: candidate.candidate.symbol,
+    quoteVolume24h: candidate.candidate.quoteVolume24h,
+    score: candidate.score,
+    penalty: candidate.penalty,
+    status: candidate.status,
+    confidence: "LOW",
+    reasons: candidate.reasons,
+    rejectReason: null,
+  };
+}
+
+function toSummary(candidate: EvaluatedCandidate) {
+  return {
+    symbol: candidate.candidate.symbol,
+    status: candidate.status,
+    absoluteScore: candidate.score,
+    opportunityScore: candidate.opportunity,
+    hardRiskPassed: true,
+    triggerConfirmed: candidate.trigger5m.confirmed,
+  };
+}
+
 async function fetchTechnicalStage(
   client: BinanceMarketClient,
   shortlist: readonly LiquidityCandidate[],
   providerErrors: string[],
-): Promise<Array<{ candidate: LiquidityCandidate; trend: IntervalMetrics; primary: IntervalMetrics }>> {
-  const settled = await mapWithConcurrency(shortlist, KLINE_CONCURRENCY, async (candidate) => {
+  now: number,
+): Promise<Array<{ candidate: LiquidityCandidate; trend: IntervalMetrics; primary: IntervalMetrics; primaryKlines: Kline[] }>> {
+  return mapWithConcurrency(shortlist, KLINE_CONCURRENCY, async (candidate) => {
     try {
-      const [trend, primary] = await Promise.all([
-        metricsFor(client, candidate.symbol, INTERVALS.trend),
-        metricsFor(client, candidate.symbol, INTERVALS.primary),
+      const [trendKlines, primaryKlines] = await Promise.all([
+        client.klines(candidate.symbol, INTERVALS.trend, KLINE_LIMIT),
+        client.klines(candidate.symbol, INTERVALS.primary, KLINE_LIMIT),
       ]);
-      return { candidate, trend, primary };
+      const closedTrend = filterClosedKlines(trendKlines, now);
+      const closedPrimary = filterClosedKlines(primaryKlines, now);
+      const trend = buildIntervalMetrics(INTERVALS.trend, closedTrend);
+      const primary = buildIntervalMetrics(INTERVALS.primary, closedPrimary);
+      if (!trend || !primary) return null;
+      return { candidate, trend, primary, primaryKlines: closedPrimary };
     } catch (error: unknown) {
       providerErrors.push(`${candidate.symbol}: ${describeBinanceError(error)}`);
       return null;
     }
-  });
-
-  const stage: Array<{ candidate: LiquidityCandidate; trend: IntervalMetrics; primary: IntervalMetrics }> = [];
-  for (const entry of settled) {
-    if (!entry || entry.trend === null || entry.primary === null) continue;
-    stage.push({ candidate: entry.candidate, trend: entry.trend, primary: entry.primary });
-  }
-  return stage;
+  }).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
 }
 
-/** The coarse screen: EMA stack, both slopes up, RSI window, not over-extended. */
-type CoarseScreenEntry = {
-  trend: { ema9: number; ema21: number; ema55: number; ema21Slope: number; ema55Slope: number };
-  primary: { rsi14: number; distanceFromEma21Atr: number };
-};
-
-/**
- * Explains the first coarse-screen check a candidate failed.
- *
- * Returns `null` when the candidate passes. Split out from {@link passesCoarseScreen}
- * so the debug view can say *which* filter rejected a symbol instead of only that
- * something did.
- */
-function coarseScreenRejectReason(entry: CoarseScreenEntry): string | null {
-  const { trend, primary } = entry;
-  if (!(trend.ema9 > trend.ema21 && trend.ema21 > trend.ema55)) {
-    return "1h EMA 未形成多头排列（EMA9 > EMA21 > EMA55）";
-  }
-  if (!(trend.ema21Slope > 0 && trend.ema55Slope > 0)) {
-    return "1h EMA21 或 EMA55 斜率未向上";
-  }
-  if (primary.rsi14 < SCAN_CONFIG.rsiIdealMin || primary.rsi14 > SCAN_CONFIG.rsiIdealMax) {
-    return `15m RSI ${primary.rsi14.toFixed(1)} 落在 ${SCAN_CONFIG.rsiIdealMin}~${SCAN_CONFIG.rsiIdealMax} 之外`;
-  }
-  if (Math.abs(primary.distanceFromEma21Atr) > SCAN_CONFIG.maxDistanceFromEma21Atr) {
-    return `偏离 EMA21 ${Math.abs(primary.distanceFromEma21Atr).toFixed(1)} ATR 超过 ${SCAN_CONFIG.maxDistanceFromEma21Atr}`;
-  }
-  return null;
-}
-
-function passesCoarseScreen(entry: CoarseScreenEntry): boolean {
-  return coarseScreenRejectReason(entry) === null;
-}
-
-/** Caps the debug payload while preferring the candidates that scored best. */
-function toDebugCandidates(
-  ranked: readonly EvaluatedCandidate[],
-  rejected: readonly DebugCandidate[],
-): DebugCandidate[] {
-  const top = ranked.slice(0, DEBUG_CANDIDATE_LIMIT).map((entry, index) => {
-    const { candidate, score, penalty, status, reasons } = entry;
-    return {
-      symbol: candidate.symbol,
-      quoteVolume24h: candidate.quoteVolume24h,
-      score,
-      penalty,
-      status,
-      reasons,
-      // The best candidate is the answer, so it has nothing to be rejected for;
-      // every other row states the gap that kept it out of first place.
-      rejectReason:
-        index === 0
-          ? null
-          : `评分 ${score} 低于本次最佳候选的 ${ranked[0]?.score ?? score}`,
-    } satisfies DebugCandidate;
-  });
-
-  const room = DEBUG_CANDIDATE_LIMIT - top.length;
-  if (room <= 0) return top;
-  return [...top, ...rejected.slice(0, room)];
-}
-
-/**
- * Runs one full scan against the public market-data endpoints.
- *
- * Global failures (universe, whole-market tickers, BTC context) throw so the
- * caller can surface `DATA_UNAVAILABLE`. Per-symbol failures never throw: they
- * shrink the funnel and are reported in `diagnostics.providerErrors`.
- */
-export async function runScan(client: BinanceMarketClient): Promise<ScanPayload> {
-  const now = Date.now();
+/** Runs one complete scan and returns the persisted payload. */
+export async function runScan(client: BinanceMarketClient, now: number = Date.now()): Promise<ScanPayload> {
   const providerErrors: string[] = [];
-
   let universeCount = 0;
   let liquidityFilterCount = 0;
   let technicalScanCount = 0;
   let deepScanCount = 0;
 
   try {
-    const [exchangeSymbols, allTickers, btc1h, btc15m] = await Promise.all([
-      client.exchangeInfo(),
-      client.ticker24h(),
-      client.klines("BTCUSDT", INTERVALS.trend, KLINE_LIMIT),
-      client.klines("BTCUSDT", INTERVALS.primary, KLINE_LIMIT),
-    ]);
-
-    const universeList = buildUniverse(exchangeSymbols);
-    const universe = universeList.map((symbol) => symbol.symbol);
-    universeCount = universeList.length;
-    const tickerBySymbol = new Map<string, Ticker24h>();
-    for (const ticker of allTickers) tickerBySymbol.set(ticker.symbol, ticker);
-
-    const [tickers, books] = await Promise.all([
-      client.ticker24h(universe),
-      client.bookTicker(universe),
-    ]);
+    const universe = buildUniverse(await client.exchangeInfo());
+    universeCount = universe.length;
+    if (universeCount === 0) throw new BinanceError("Binance 现货 Universe 不可用", { code: "DATA_UNAVAILABLE", endpoint: "runScan" });
+    const universeSymbols = universe.map((symbol) => symbol.symbol);
+    const [tickers, books] = await Promise.all([client.ticker24h(universeSymbols), client.bookTicker(universeSymbols)]);
     const bookBySymbol = new Map<string, BookTicker>();
     for (const book of books) bookBySymbol.set(book.symbol, book);
 
@@ -314,148 +221,198 @@ export async function runScan(client: BinanceMarketClient): Promise<ScanPayload>
     const shortlist = selectTechnicalScanSet(liquidityCandidates);
     technicalScanCount = shortlist.length;
 
-    const technicalStage = await fetchTechnicalStage(client, shortlist, providerErrors);
-
-    // Spec #70: keep the symbols the coarse screen dropped, with the check that
-    // dropped them, so the debug view explains the funnel instead of just sizing it.
-    const coarseRejected: DebugCandidate[] = [];
-    for (const entry of technicalStage) {
-      const rejectReason = coarseScreenRejectReason(entry);
-      if (rejectReason !== null) {
-        coarseRejected.push({
-          symbol: entry.candidate.symbol,
-          quoteVolume24h: entry.candidate.quoteVolume24h,
-          score: null,
-          penalty: null,
-          status: null,
-          reasons: [],
-          rejectReason,
-        });
-      }
-    }
-    coarseRejected.sort(
-      (left, right) => right.quoteVolume24h - left.quoteVolume24h,
-    );
-
-    const coarse = technicalStage
-      .filter((entry) => passesCoarseScreen(entry))
-      .sort((left, right) => {
-        const byVolume = right.candidate.quoteVolume24h - left.candidate.quoteVolume24h;
-        if (byVolume !== 0) return byVolume;
-        return left.candidate.symbol.localeCompare(right.candidate.symbol);
-      })
-      .slice(0, SCAN_CONFIG.deepScanSize);
-
-    const metrics1h = buildIntervalMetrics(INTERVALS.trend, btc1h);
-    const metrics15m = buildIntervalMetrics(INTERVALS.primary, btc15m);
-    const btcDrop = btcDropPct1h(btc1h);
-    const regime: MarketRegimeAssessment = assessMarketRegime({
-      metrics1h,
-      metrics15m,
+    const btcSymbol = "BTCUSDT";
+    const [btc1hRaw, btc15mRaw] = await Promise.all([
+      client.klines(btcSymbol, INTERVALS.trend, KLINE_LIMIT),
+      client.klines(btcSymbol, INTERVALS.primary, KLINE_LIMIT),
+    ]);
+    const btc1h = filterClosedKlines(btc1hRaw, now);
+    const btc15m = filterClosedKlines(btc15mRaw, now);
+    const btcDrop = (() => {
+      const last = btc1h[btc1h.length - 1];
+      const previous = btc1h[btc1h.length - 2];
+      if (!last || !previous?.close) return null;
+      return Math.max(0, ((previous.close - last.close) / previous.close) * 100);
+    })();
+    const regime = assessMarketRegime({
+      metrics1h: buildIntervalMetrics(INTERVALS.trend, btc1h),
+      metrics15m: buildIntervalMetrics(INTERVALS.primary, btc15m),
       btcDropPct1h: btcDrop,
     });
 
-    const evaluated = await mapWithConcurrency(coarse, KLINE_CONCURRENCY, async (entry) => {
-      const { candidate, trend, primary } = entry;
+    const gateInputBase = {
+      btcDropPct1h: btcDrop,
+      marketRegime: regime.regime,
+      dataTimestamp: btc1h[btc1h.length - 1]?.closeTime ?? now,
+      now,
+      klinesAvailable: btc1h.length > 0 && btc15m.length > 0,
+      providerErrors: [] as string[],
+    };
+    const btcMetrics15m = buildIntervalMetrics(INTERVALS.primary, btc15m);
+    if (!btcMetrics15m) {
+      return halted(regime.regime, ["BTC 市场数据不完整"], regime.reasons, now, emptyDiagnostics(now, universeCount));
+    }
+    if (btcDrop !== null && btcDrop >= REGIME_CONFIG.crashPct1h) {
+      return halted(regime.regime, [
+        `BTC 近 1 小时下跌 ${btcDrop.toFixed(1)}%，触发系统性停扫`,
+      ], regime.reasons, now, emptyDiagnostics(now, universeCount));
+    }
+
+    const technicalStage = await fetchTechnicalStage(client, shortlist, providerErrors, now);
+    const liquidityBySymbol = new Map(liquidityCandidates.map((entry) => [entry.symbol, entry]));
+    const tickerBySymbol = new Map(tickers.map((entry) => [entry.symbol, entry]));
+    const peerInputs = technicalStage.map((stage) => ({
+      metrics15m: stage.primary,
+      metrics1h: stage.trend,
+      change24h: tickerBySymbol.get(stage.candidate.symbol)?.priceChangePercent ?? 0,
+      volumeRatio24h: stage.primary.volumeRatio,
+      universeCount,
+    }));
+
+    // Technical ranking uses the existing 100-point model but does not discard
+    // imperfect trend/position; it identifies the expensive deep-scan subset.
+    const rejectedTechnical = technicalStage.filter((entry) => entry.primary.rsi14 >= SCAN_CONFIG.rsiExtreme);
+    const technicalRanked = technicalStage
+      .filter((entry) => entry.primary.rsi14 < SCAN_CONFIG.rsiExtreme)
+      .map((entry) => {
+        const liquidity = liquidityBySymbol.get(entry.candidate.symbol)!;
+        const ticker = tickerBySymbol.get(entry.candidate.symbol)!;
+        const pattern = bestPattern(detectPatterns(entry.trend, entry.primary));
+        const supportResistance = detectSupportResistance(entry.primaryKlines);
+        return { entry, liquidity, ticker, pattern, supportResistance };
+      })
+      .filter((entry) => Boolean(entry.ticker))
+      .map((entry) => ({ ...entry, technicalScore: scoreCandidate({
+        trend: entry.entry.trend,
+        primary: entry.entry.primary,
+        pattern: entry.pattern,
+        ticker24h: entry.ticker!,
+        quoteVolume24h: entry.liquidity.quoteVolume24h,
+        spreadPct: entry.liquidity.spreadPct ?? 99,
+        supportResistance: entry.supportResistance ?? { support: entry.entry.primary.low20, resistance: entry.entry.primary.high20, distanceToResistancePct: ((entry.entry.primary.high20 - entry.entry.primary.close) / entry.entry.primary.close) * 100, distanceToSupportPct: ((entry.entry.primary.close - entry.entry.primary.low20) / entry.entry.primary.close) * 100, targetBlocked: false, method: "20-bar range" },
+        marketRegimePoints: regime.points,
+        lastCandleMovePct: 0,
+      })}))
+      .sort((left, right) => right.technicalScore.total - left.technicalScore.total || left.liquidity.symbol.localeCompare(right.liquidity.symbol));
+    const rejectedTechnicalRanked = rejectedTechnical
+      .map((entry) => ({
+        entry,
+        liquidity: liquidityBySymbol.get(entry.candidate.symbol)!,
+        ticker: tickerBySymbol.get(entry.candidate.symbol)!,
+        pattern: bestPattern(detectPatterns(entry.trend, entry.primary)),
+        supportResistance: detectSupportResistance(entry.primaryKlines),
+      }))
+      .filter((entry) => Boolean(entry.ticker))
+      .sort((left, right) => left.entry.candidate.symbol.localeCompare(right.entry.candidate.symbol));
+    const technical = [
+      ...technicalRanked,
+      ...rejectedTechnicalRanked,
+    ].slice(0, SCAN_CONFIG.deepScanSize);
+
+    deepScanCount = technical.length;
+    const deep = await mapWithConcurrency(technical, KLINE_CONCURRENCY, async (entry): Promise<EvaluatedCandidate | null> => {
+      const { candidate, trend, primary } = entry.entry;
       try {
-        const ticker = tickerBySymbol.get(candidate.symbol);
-        if (!ticker) {
-          providerErrors.push(`${candidate.symbol}: 缺少 24 小时行情数据`);
-          return null;
-        }
-        const book = bookBySymbol.get(candidate.symbol) ?? null;
-        const [micro, macro] = await Promise.all([
+        const ticker = tickers.find((item) => item.symbol === candidate.symbol);
+        if (!ticker) return null;
+        const [microRaw, macroRaw, primaryRaw] = await Promise.all([
           client.klines(candidate.symbol, INTERVALS.confirmation, KLINE_LIMIT),
           client.klines(candidate.symbol, INTERVALS.macro, KLINE_LIMIT),
+          client.klines(candidate.symbol, INTERVALS.primary, KLINE_LIMIT),
         ]);
-        void micro;
-        void macro;
-
-        const primaryKlines = await client.klines(candidate.symbol, INTERVALS.primary, KLINE_LIMIT);
+        const micro = filterClosedKlines(microRaw, now);
+        const macroKlines = filterClosedKlines(macroRaw, now);
+        const primaryKlines = filterClosedKlines(primaryRaw, now);
+        const metrics5m = buildIntervalMetrics(INTERVALS.confirmation, micro);
+        const metrics4h = buildIntervalMetrics(INTERVALS.macro, macroKlines);
         const supportResistance = detectSupportResistance(primaryKlines);
-        if (supportResistance === null) return null;
+        if (!metrics5m || !metrics4h || !supportResistance) return null;
 
         const spread = candidate.spreadPct;
         if (spread === null || !Number.isFinite(spread)) return null;
-
-        const pattern = bestPattern(detectPatterns(trend, primary));
-        const move = lastCandleMovePct(primaryKlines);
+        const gate = evaluateRiskGate({
+          ...gateInputBase,
+          metrics15m: primary,
+          ticker,
+          quoteVolume24h: candidate.quoteVolume24h,
+          spreadPct: spread,
+          dataTimestamp: primaryKlines[primaryKlines.length - 1]?.closeTime ?? now,
+          providerErrors: [],
+        });
+        if (!gate.passed) return null;
         const breakdown = scoreCandidate({
           trend,
           primary,
-          pattern,
+          pattern: bestPattern(detectPatterns(trend, primary)),
           ticker24h: ticker,
           quoteVolume24h: candidate.quoteVolume24h,
           spreadPct: spread,
           supportResistance,
           marketRegimePoints: regime.points,
-          lastCandleMovePct: move,
+          lastCandleMovePct: lastCandleMovePct(primaryKlines),
         });
-        const gate = evaluateRiskGate({
+        const trigger5m = assessTrigger(metrics5m);
+        const macro = assessMacro(metrics4h);
+        const distanceAtr = Math.abs(primary.distanceFromEma21Atr);
+        const stretchPenalty = distanceAtr > 1.2
+          ? Math.min(15, (distanceAtr - 1.2) * 12)
+          : 0;
+        const softPenalty = Math.max(0, breakdown.penalty + stretchPenalty + (macro.quality < 45 ? 8 : 0));
+        const relative = relativeStrength({
           metrics15m: primary,
-          ticker,
-          book,
-          quoteVolume24h: candidate.quoteVolume24h,
-          spreadPct: spread,
-          btcDropPct1h: btcDrop,
-          marketRegime: regime.regime,
-          dataTimestamp: primaryKlines[primaryKlines.length - 1]?.closeTime ?? now,
-          now,
-          klinesAvailable: true,
-          providerErrors: [],
-        });
-
-        let status: ScanStatus = "NO_TRADE";
-        const reasons: string[] = [];
-        if (!gate.passed) {
-          status = "NO_TRADE";
-          reasons.push(...gate.reasons);
-        } else if (breakdown.total >= SCAN_CONFIG.entryScore) {
-          status = "ENTRY_NOW";
-        } else if (breakdown.total >= SCAN_CONFIG.watchScore) {
-          status = "WAIT_PULLBACK";
-        } else {
-          status = "NO_TRADE";
-        }
-        reasons.push(pattern.label);
-
-        const risks = unique([...gate.warnings.map(warningLabel), ...regime.reasons]);
-        const referencePrice = primary.close;
-        const plan: TradePlan = {
-          referencePrice,
-          target5Pct: referencePrice * (1 + SCAN_CONFIG.targetPct / 100),
-          invalidation: supportResistance.support,
-        };
-
+          metrics1h: trend,
+          change24h: ticker.priceChangePercent,
+          volumeRatio24h: primary.volumeRatio,
+          universeCount,
+        }, peerInputs);
+        const opportunity = opportunityScore({
+          absolute: breakdown,
+          relativeStrength: relative.score,
+          liquidityQuality: candidate.liquidityPoints * 10,
+          triggerQuality: trigger5m.quality,
+          softRiskPenalty: softPenalty,
+        }).opportunityScore;
+        const status = decisionFrom(opportunity, trigger5m.confirmed, distanceAtr);
+        const reasons = unique([
+          trend.ema9 > trend.ema21 ? "1h 短期趋势偏强" : "1h 趋势仍在确认",
+          trend.ema21Slope > 0 ? "1h EMA21 向上" : "1h 趋势斜率不足",
+          ...macro.reasons,
+          ...triggerReasons(trigger5m),
+          supportResistance.targetBlocked ? "上方阻力较近" : "目标上方空间正常",
+        ]);
+        const risks = unique([...gate.warnings, ...regime.reasons, macro.quality < 45 ? "4h 大级别结构偏弱" : ""]);
+        const price = primary.close;
         return {
           candidate,
           ticker,
           metrics15m: buildMetrics(primary, trend, spread),
-          lastCandleMovePct: move,
+          trend1h: trend,
+          setup15m: primary,
+          macro4h: metrics4h,
+          trigger5m,
           score: breakdown.total,
           penalty: breakdown.penalty,
+          opportunity,
           status,
           reasons,
           risks,
-          plan,
+          plan: buildTradePlan(price, primary, supportResistance.support),
           evaluatedAt: primaryKlines[primaryKlines.length - 1]?.closeTime ?? now,
-        } satisfies EvaluatedCandidate;
+          recentKlines: primaryKlines.slice(-48),
+          recentPrices: primaryKlines.slice(-48).map((kline) => kline.close),
+        };
       } catch (error: unknown) {
         providerErrors.push(`${candidate.symbol}: ${describeBinanceError(error)}`);
         return null;
       }
     });
 
-    deepScanCount = coarse.length;
-
-    const ranked = evaluated
-      .filter((entry): entry is EvaluatedCandidate => entry !== null)
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        return left.candidate.symbol.localeCompare(right.candidate.symbol);
-      });
-
-    const top = ranked[0] ?? null;
+    const evaluated = deep.filter((entry): entry is EvaluatedCandidate => entry !== null);
+    const ranked = [...evaluated].sort((left, right) => right.opportunity - left.opportunity || left.candidate.symbol.localeCompare(right.candidate.symbol));
+    const statusRanked = [...ranked].sort((left, right) => STATUS_PRIORITY[right.status] - STATUS_PRIORITY[left.status] || right.opportunity - left.opportunity || left.candidate.symbol.localeCompare(right.candidate.symbol));
+    const top = statusRanked[0] ?? null;
+    const nextScore = ranked.find((entry) => entry.candidate.symbol !== top?.candidate.symbol)?.opportunity ?? null;
+    const confidence = top ? confidenceFromRanking({ absolute: { trend: 0, momentum: 0, volume: 0, entry: 0, liquidity: 0, riskReward: 0, market: 0, penalty: top.penalty, total: top.score }, relativeStrength: 0, liquidityQuality: 0, triggerQuality: top.trigger5m.quality, softRiskPenalty: top.penalty }, nextScore).confidence : "LOW";
     const diagnostics: ScanDiagnostics = {
       universeCount,
       liquidityFilterCount,
@@ -467,65 +424,133 @@ export async function runScan(client: BinanceMarketClient): Promise<ScanPayload>
       scanDurationMs: Date.now() - now,
       dataTimestamp: top?.evaluatedAt ?? Date.now(),
       providerErrors: unique(providerErrors),
-      topCandidates: toDebugCandidates(ranked, coarseRejected),
+      topCandidates: [
+        ...ranked.slice(0, DEBUG_CANDIDATE_LIMIT).map((entry, index) => {
+      const debugCandidate = debugFromCandidate(entry);
+          return index === 0 ? { ...debugCandidate, confidence } : {
+            ...debugCandidate,
+            confidence,
+            rejectReason: `机会分 ${entry.opportunity.toFixed(1)} 低于本次最佳候选的 ${ranked[0].opportunity.toFixed(1)}`,
+          };
+        }),
+        ...rejectedTechnical.slice(0, DEBUG_CANDIDATE_LIMIT).map((entry) => ({
+          symbol: entry.candidate.symbol,
+          quoteVolume24h: entry.candidate.quoteVolume24h,
+          score: null,
+          penalty: null,
+          confidence: "LOW" as Confidence,
+          status: "WATCH_ONLY" as ScanStatus,
+          reasons: [`15m RSI ${entry.primary.rsi14.toFixed(1)} 极端过热，仅保留观察`],
+          rejectReason: `15m RSI ${entry.primary.rsi14.toFixed(1)} 高于极端阈值 ${SCAN_CONFIG.rsiExtreme}`,
+        })),
+      ],
     };
 
-    if (top === null) {
-      return {
-        result: {
-          status: "NO_TRADE",
-          symbol: null,
-          baseAsset: null,
-          price: null,
-          score: 0,
-          targetPct: SCAN_CONFIG.targetPct,
-          marketRegime: regime.regime,
-          reasons: [emptyFunnelReason(universeCount, liquidityFilterCount, technicalScanCount)],
-          risks: unique(regime.reasons),
-          metrics: null,
-          plan: null,
-          generatedAt: new Date(now).toISOString(),
-          strategyVersion: STRATEGY_VERSION,
-        },
-        diagnostics,
-        cached: false,
+    if (!top) {
+      if (providerErrors.length > 0 || liquidityFilterCount === 0) {
+        return halted(
+          regime.regime,
+          liquidityFilterCount === 0
+            ? [`所有候选 24h 成交额低于 ${SCAN_CONFIG.minQuoteVolume24h / 1_000_000}M USDT 成交额下限，仅保留市场观察`]
+            : ["暂无可评估候选，市场数据不完整"],
+          regime.reasons,
+          now,
+          diagnostics,
+        );
+      }
+      const fallbackEntry = technical[0]?.entry ?? null;
+      const fallbackLiquidity = technical[0]?.liquidity ?? null;
+      const rejectedEntry = fallbackEntry ? null : rejectedTechnical[0] ?? null;
+      const fallbackPrimary = fallbackEntry?.primary ?? rejectedEntry?.primary ?? null;
+      const fallbackTrend = fallbackEntry?.trend ?? rejectedEntry?.trend ?? null;
+      const fallbackSymbol = fallbackEntry?.candidate.symbol ?? rejectedEntry?.candidate.symbol ?? null;
+      if (!fallbackPrimary || !fallbackTrend || !fallbackSymbol) {
+        return halted(regime.regime, ["暂无可评估候选，市场数据不完整"], regime.reasons, now, diagnostics);
+      }
+      const watchResult: ScanResult = {
+        status: "WATCH_ONLY",
+        symbol: fallbackSymbol,
+        baseAsset: fallbackSymbol.replace(/USDT$/, ""),
+        price: fallbackPrimary.close,
+        score: 0,
+        targetPct: SCAN_CONFIG.targetPct,
+        marketRegime: regime.regime,
+        reasons: [
+          fallbackPrimary.rsi14 >= SCAN_CONFIG.rsiExtreme
+            ? `15m RSI ${fallbackPrimary.rsi14.toFixed(1)} 极端过热，仅保留观察`
+            : "当前候选未通过完整评估，仅保留观察",
+        ],
+        risks: ["5m/4h 数据不完整"],
+        metrics: buildMetrics(fallbackPrimary, fallbackTrend, fallbackLiquidity?.spreadPct ?? 0),
+        plan: null,
+        generatedAt: new Date(now).toISOString(),
+        strategyVersion: STRATEGY_VERSION,
+        absoluteScore: 0,
+        opportunityScore: 0,
+        marketRank: 1,
+        relativeRank: 1,
+        confidence: "LOW",
+        topCandidates: [],
       };
-    }
-
-    // Belt-and-braces freshness demotion: the gate already vetoes stale data, but
-    // a cached or slow scan must never advertise a fresh entry on old candles.
-    const dataTimestamp = top.evaluatedAt;
-    let status = top.status;
-    const reasons = [...top.reasons];
-    if (status === "ENTRY_NOW" && now - dataTimestamp > SCAN_CONFIG.dataFreshnessMs) {
-      status = "WAIT_PULLBACK";
-      reasons.push(STALE_DEMOTION_REASON);
+      return { result: watchResult, diagnostics, cached: false };
     }
 
     const baseAsset = top.candidate.symbol.replace(/USDT$/, "");
     const result: ScanResult = {
-      status,
+      status: top.status,
       symbol: top.candidate.symbol,
       baseAsset,
       price: top.plan.referencePrice,
-      score: top.score,
+      score: top.status === "WATCH_ONLY" ? 0 : top.score,
       targetPct: SCAN_CONFIG.targetPct,
       marketRegime: regime.regime,
-      reasons: unique(reasons),
+      reasons: unique(top.reasons),
       risks: unique(top.risks),
       metrics: top.metrics15m,
       plan: top.plan,
       generatedAt: new Date(now).toISOString(),
       strategyVersion: STRATEGY_VERSION,
+      absoluteScore: top.score,
+      opportunityScore: top.opportunity,
+      marketRank: 1,
+      relativeRank: 1,
+      confidence,
+      topCandidates: ranked.slice(0, 3).map(toSummary),
     };
-
     return { result, diagnostics, cached: false };
   } catch (error: unknown) {
     if (isBinanceError(error)) throw error;
-    throw new BinanceError(describeBinanceError(error), {
-      code: "DATA_UNAVAILABLE",
-      endpoint: "runScan",
-      cause: error,
-    });
+    throw new BinanceError(describeBinanceError(error), { code: "DATA_UNAVAILABLE", endpoint: "runScan", cause: error });
   }
+}
+
+function halted(regime: MarketRegimeAssessment["regime"], reasons: string[], risks: string[], now: number, diagnostics: ScanDiagnostics): ScanPayload {
+  const status = liquidityOnlyHalt(reasons) ? "WATCH_ONLY" : "MARKET_HALT";
+  return {
+    result: {
+      status,
+      symbol: null,
+      baseAsset: null,
+      price: null,
+      score: 0,
+      targetPct: SCAN_CONFIG.targetPct,
+      marketRegime: regime,
+      reasons: unique(reasons),
+      risks: unique(risks),
+      metrics: null,
+      plan: null,
+      generatedAt: new Date(now).toISOString(),
+      strategyVersion: STRATEGY_VERSION,
+    },
+    diagnostics,
+    cached: false,
+  };
+}
+
+function liquidityOnlyHalt(reasons: readonly string[]): boolean {
+  return reasons.some((reason) => reason.includes("成交额下限"));
+}
+
+function emptyDiagnostics(now: number, universeCount: number): ScanDiagnostics {
+  return { universeCount, liquidityFilterCount: 0, technicalScanCount: 0, deepScanCount: 0, candidateCount: 0, topCandidate: null, topScore: null, scanDurationMs: Date.now() - now, dataTimestamp: now, providerErrors: [], topCandidates: [] };
 }

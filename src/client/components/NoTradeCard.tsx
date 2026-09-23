@@ -14,7 +14,7 @@ interface NoTradeCardProps {
   notice?: string;
 }
 
-/** NO_TRADE card: the honest answer when nothing clears the bar. */
+/** Halt card: only systemic failure or data loss uses this result. */
 export function NoTradeCard({
   result,
   stale = false,
@@ -31,20 +31,17 @@ export function NoTradeCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="pill bg-white/5 text-ink-200">
-          {STATUS_LABELS.NO_TRADE}
+          {STATUS_LABELS[result.status]}
         </span>
         <FreshnessBadge generatedAt={result.generatedAt} stale={stale} />
       </div>
 
       <div className="space-y-2 text-center">
-        <span aria-hidden className="block text-4xl">
-          🐱
-        </span>
-        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          今天不出手
-        </h2>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          {STATUS_LABELS[result.status]}
+        </h1>
         <p className="text-sm leading-relaxed text-ink-400">
-          {notice ?? STATUS_TAGLINES.NO_TRADE}
+          {notice ?? STATUS_TAGLINES[result.status]}
         </p>
       </div>
 

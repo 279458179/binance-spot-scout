@@ -10,6 +10,7 @@
 import { INTERVALS } from "@/config/strategy";
 import { readBtcRegime, writeBtcRegime } from "@/lib/cache";
 import { buildIntervalMetrics } from "@/lib/indicators/metrics";
+import { filterClosedKlines } from "@/lib/market/candles";
 import { assessMarketRegime } from "@/strategy";
 
 import type { BtcRegimeSnapshot } from "@/lib/cache";
@@ -74,9 +75,11 @@ export async function resolveBtcRegime(
       client.klines(BTC_SYMBOL, INTERVALS.primary, REGIME_KLINE_LIMIT),
     ]);
 
-    const metrics1h = buildIntervalMetrics(INTERVALS.trend, trendKlines);
-    const metrics15m = buildIntervalMetrics(INTERVALS.primary, primaryKlines);
-    const dropPct1h = btcDropPct1h(trendKlines);
+    const closedTrendKlines = filterClosedKlines(trendKlines, Date.now());
+    const closedPrimaryKlines = filterClosedKlines(primaryKlines, Date.now());
+    const metrics1h = buildIntervalMetrics(INTERVALS.trend, closedTrendKlines);
+    const metrics15m = buildIntervalMetrics(INTERVALS.primary, closedPrimaryKlines);
+    const dropPct1h = btcDropPct1h(closedTrendKlines);
     const assessment = assessMarketRegime({
       metrics1h,
       metrics15m,

@@ -7,15 +7,16 @@
  */
 
 /** Decision produced by the strategy for a single scan. */
-export type ScanStatus = "ENTRY_NOW" | "WAIT_PULLBACK" | "NO_TRADE";
+export type ScanStatus = "BUY_NOW" | "BUY_ON_PULLBACK" | "WATCH_ONLY" | "MARKET_HALT";
 
 /** Coarse BTC market environment used to dampen altcoin risk. */
 export type MarketRegime = "RISK_ON" | "NEUTRAL" | "RISK_OFF";
 
 export const SCAN_STATUSES: readonly ScanStatus[] = [
-  "ENTRY_NOW",
-  "WAIT_PULLBACK",
-  "NO_TRADE",
+  "BUY_NOW",
+  "BUY_ON_PULLBACK",
+  "WATCH_ONLY",
+  "MARKET_HALT",
 ] as const;
 
 export const MARKET_REGIMES: readonly MarketRegime[] = [
@@ -29,23 +30,16 @@ export type Interval = "5m" | "15m" | "1h" | "4h";
 
 /** A kline as returned by Binance, parsed into typed numbers. */
 export interface Kline {
-  /** Open time, epoch milliseconds. */
   openTime: number;
   open: number;
   high: number;
   low: number;
   close: number;
-  /** Base asset volume. */
   volume: number;
-  /** Close time, epoch milliseconds. */
   closeTime: number;
-  /** Quote asset volume. */
   quoteVolume: number;
-  /** Number of trades. */
   trades: number;
-  /** Taker buy base asset volume. */
   takerBuyBase: number;
-  /** Taker buy quote asset volume. */
   takerBuyQuote: number;
 }
 
@@ -71,25 +65,13 @@ export interface BookTicker {
   askQty: number;
 }
 
-/**
- * Raw frame of the `bookTicker` websocket stream.
- *
- * Field names are Binance's own single-letter keys and are parsed once, at the
- * edge, by `useTicker`. Everything downstream sees normalized numbers, so the
- * rest of the UI never has to know about string-encoded prices.
- */
+/** Raw frame of the `bookTicker` websocket stream. */
 export interface TickerPayload {
-  /** Update id — useful for diagnosing out-of-order frames. */
   u: number;
-  /** Symbol, e.g. `BTCUSDT`. */
   s: string;
-  /** Best bid price, as a decimal string. */
   b: string;
-  /** Best bid quantity, as a decimal string. */
   B: string;
-  /** Best ask price, as a decimal string. */
   a: string;
-  /** Best ask quantity, as a decimal string. */
   A: string;
 }
 
@@ -132,9 +114,7 @@ export interface IntervalMetrics {
   low20: number;
   upperWickRatio: number;
   lowerWickRatio: number;
-  /** Distance from close to EMA21 expressed in ATR units. */
   distanceFromEma21Atr: number;
-  /** Higher-high / higher-low structure over the lookback window. */
   higherHigh: boolean;
   higherLow: boolean;
 }
@@ -144,7 +124,6 @@ export type PatternKind = "A_EMA21_PULLBACK_RECLAIM" | "B_BREAKOUT_HOLD" | "C_TR
 
 export interface PatternDetection {
   kind: PatternKind;
-  /** Human-readable Chinese explanation used in `reasons` / `risks`. */
   label: string;
   matched: boolean;
 }
@@ -153,11 +132,8 @@ export interface PatternDetection {
 export interface SupportResistance {
   support: number;
   resistance: number;
-  /** (resistance - price) / price * 100 */
   distanceToResistancePct: number;
-  /** (price - support) / price * 100 */
   distanceToSupportPct: number;
-  /** True when +targetPct% would run into the nearest resistance too early. */
   targetBlocked: boolean;
   method: string;
 }
@@ -171,19 +147,15 @@ export interface ScoreBreakdown {
   liquidity: number;
   riskReward: number;
   market: number;
-  /** Positive number representing points removed. */
   penalty: number;
   total: number;
 }
 
-/** Risk gate verdict — evaluated independently of, and with priority over, the score. */
+/** Hard-risk gate verdict; soft risks are represented by warnings. */
 export interface RiskGateResult {
   passed: boolean;
-  /** Machine-readable rule ids that blocked a fresh entry. */
   violations: string[];
-  /** Chinese operator-facing explanations for each violation. */
   reasons: string[];
-  /** Non-blocking advisories shown as `risks`. */
   warnings: string[];
 }
 
@@ -199,8 +171,13 @@ export interface CandidateMetrics {
 /** Concrete price plan attached to a decision. */
 export interface TradePlan {
   referencePrice: number;
+  entryZoneLow: number;
+  entryZoneHigh: number;
+  pullbackPrice: number;
+  target3Pct: number;
   target5Pct: number;
   invalidation: number;
+  riskReward: number;
 }
 
 /** One scan result, as stored in KV and returned by the API. */
@@ -218,6 +195,27 @@ export interface ScanResult {
   plan: TradePlan | null;
   generatedAt: string;
   strategyVersion: string;
+  absoluteScore?: number;
+  opportunityScore?: number;
+  marketRank?: number;
+  relativeRank?: number;
+  confidence?: Confidence;
+  topCandidates?: TopCandidateSummary[];
+  recentPrices?: number[];
+}
+
+export type Confidence = "HIGH" | "MEDIUM" | "LOW";
+
+export const CONFIDENCE_LEVELS: readonly Confidence[] = ["HIGH", "MEDIUM", "LOW"] as const;
+
+/** Compact ranking row persisted for diagnostics and final-selection tests. */
+export interface TopCandidateSummary {
+  symbol: string;
+  status: ScanStatus;
+  absoluteScore: number;
+  opportunityScore: number;
+  hardRiskPassed: boolean;
+  triggerConfirmed: boolean;
 }
 
 /** Diagnostics describing how the funnel shrank, for `/debug` and the API. */
@@ -232,33 +230,18 @@ export interface ScanDiagnostics {
   scanDurationMs: number;
   dataTimestamp: number;
   providerErrors: string[];
-  /**
-   * The deepest candidates of this run, best score first, capped for payload
-   * size. Populated for every scan so the debug view stays truthful in
-   * production when `ENABLE_DEBUG` is turned on.
-   */
   topCandidates: DebugCandidate[];
 }
 
-/**
- * One internally-evaluated candidate, kept for the debug view.
- *
- * Mirrors spec #70: the debug page has to answer "why was this symbol not the
- * pick?" without re-running the scan, so each entry carries the score, the
- * penalty it was charged and the single reason it was held back.
- */
+/** One internally-evaluated candidate, kept for the debug view. */
 export interface DebugCandidate {
   symbol: string;
   quoteVolume24h: number;
-  /** Final score; `null` when the symbol never reached scoring. */
   score: number | null;
-  /** Points removed by the penalty engine; `null` when never scored. */
   penalty: number | null;
-  /** Decision the candidate earned, or `null` when it was filtered earlier. */
+  confidence: Confidence;
   status: ScanStatus | null;
-  /** Human-readable reasons supporting the decision. */
   reasons: string[];
-  /** Why this candidate is not the answer, when that applies. */
   rejectReason: string | null;
 }
 
@@ -266,11 +249,10 @@ export interface DebugCandidate {
 export interface ScanPayload {
   result: ScanResult;
   diagnostics: ScanDiagnostics;
-  /** True when served from KV cache rather than a fresh scan. */
   cached: boolean;
 }
 
-/** A row of `GET /api/history`. */
+/** One row of `GET /api/history`. */
 export interface HistoryEntry {
   id: number;
   createdAt: string;
@@ -283,6 +265,37 @@ export interface HistoryEntry {
   invalidationPrice: number | null;
   reasons: string[];
   risks: string[];
+  outcome?: HistoryOutcome;
+}
+
+/** Actual performance recorded for a historical decision, when available. */
+export interface HistoryOutcome {
+  price1h: number | null;
+  price6h: number | null;
+  price24h: number | null;
+  mfePct: number | null;
+  maePct: number | null;
+  target3Hit: boolean | null;
+  target5Hit: boolean | null;
+}
+
+/** One decision-window research aggregate. */
+export interface ResearchWindowStats {
+  status: ScanStatus;
+  sampleSize: number;
+  hit3Pct: number | null;
+  hit5Pct: number | null;
+  medianMfePct: number | null;
+  medianMaePct: number | null;
+  medianReturn24hPct: number | null;
+  averageReturn1hPct: number | null;
+  averageReturn6hPct: number | null;
+}
+
+/** A 7d / 30d research report for the Research page. */
+export interface ResearchReport {
+  days: 7 | 30;
+  windows: ResearchWindowStats[];
 }
 
 /** Health endpoint payload. */
@@ -297,7 +310,6 @@ export interface ApiError {
   ok: false;
   error: string;
   message: string;
-  /** Present when the failure is an upstream market-data problem. */
   code?: "DATA_UNAVAILABLE" | "INVALID_REQUEST" | "INTERNAL";
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "binance-spot-scout",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "One click, one candidate. A Binance Spot long-candidate scanner with a hard risk gate.",
   "license": "MIT",

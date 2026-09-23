@@ -38,15 +38,26 @@ export async function insertScan(db: D1Database, payload: ScanPayload): Promise<
   const { result } = payload;
 
   try {
+    if (result.symbol !== null) {
+      const duplicate = await db
+        .prepare(
+          "SELECT 1 FROM scans WHERE symbol = ? AND status = ? AND decision_candle_key = ? LIMIT 1",
+        )
+        .bind(result.symbol, result.status, result.generatedAt)
+        .first();
+      if (duplicate !== null) return null;
+    }
+
     const write = await db
       .prepare(
         `INSERT INTO scans (
-           created_at, symbol, price, score, status, market_regime,
+           created_at, decision_candle_key, symbol, price, score, status, market_regime,
            target_price, invalidation_price, features_json, reasons_json, risks_json
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         result.generatedAt,
+        result.symbol === null ? null : result.generatedAt,
         result.symbol,
         result.price,
         result.score,

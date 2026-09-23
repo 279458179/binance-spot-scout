@@ -19,6 +19,7 @@ import type {
   ApiError,
   HealthPayload,
   HistoryEntry,
+  ResearchReport,
   ScanDiagnostics,
   ScanPayload,
   SymbolDetail,
@@ -149,6 +150,11 @@ export async function fetchHistory(limit = 20): Promise<HistoryEntry[]> {
     `/api/history?limit=${String(limit)}`,
   );
   return Array.isArray(body.entries) ? body.entries : [];
+}
+
+/** `GET /api/research` — outcome statistics grouped by decision and window. */
+export function fetchResearch(): Promise<{ ok: boolean; reports: ResearchReport[] }> {
+  return request<{ ok: boolean; reports: ResearchReport[] }>("/api/research");
 }
 
 /** `GET /api/symbol/:symbol` — deep metrics for one symbol. */

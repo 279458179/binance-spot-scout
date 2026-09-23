@@ -15,7 +15,7 @@ const GENERATED_AT = new Date().toISOString();
 /** A tradable candidate, shaped exactly like the Worker's payload. */
 function entryNowResult(overrides: Partial<ScanResult> = {}): ScanResult {
   return {
-    status: "ENTRY_NOW",
+    status: "BUY_NOW",
     symbol: "SUIUSDT",
     baseAsset: "SUI",
     price: 3.37,
@@ -31,7 +31,16 @@ function entryNowResult(overrides: Partial<ScanResult> = {}): ScanResult {
       spreadPct: 0.12,
       atrPct: 0.9,
     },
-    plan: { referencePrice: 3.37, target5Pct: 3.5385, invalidation: 3.11 },
+    plan: {
+      referencePrice: 3.37,
+      entryZoneLow: 3.32,
+      entryZoneHigh: 3.39,
+      pullbackPrice: 3.3,
+      target3Pct: 3.4711,
+      target5Pct: 3.5385,
+      invalidation: 3.11,
+      riskReward: 1.55,
+    },
     generatedAt: GENERATED_AT,
     strategyVersion: "1.0.0",
     ...overrides,
@@ -113,11 +122,11 @@ async function mockApi(page: Page, result: ScanResult): Promise<void> {
 }
 
 test.describe("home", () => {
-  test("shows a candidate with its score, plan and reasons for ENTRY_NOW", async ({ page }) => {
+  test("shows a candidate with its score, plan and reasons", async ({ page }) => {
     await mockApi(page, entryNowResult());
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("点击一次");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("SUI / USDT");
     await expect(page.getByText("SUI", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("81", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("15m 回踩 EMA21 后重新站稳")).toBeVisible();
@@ -143,12 +152,6 @@ test.describe("home", () => {
     await mockApi(page, entryNowResult());
     await page.goto("/");
 
-    const tracker = page.getByRole("button", { name: "开始追踪" });
-    await expect(tracker).toBeVisible();
-    await tracker.click();
-
-    // Both the tracker panel and the primary CTA relabel themselves, so scope to one.
-    await expect(page.getByRole("button", { name: "停止追踪" }).first()).toBeVisible();
     const exchangeLink = page.getByRole("link", { name: "打开 Binance" });
     await expect(exchangeLink).toBeVisible();
     // The handoff must point at the candidate's own spot pair.
@@ -157,11 +160,11 @@ test.describe("home", () => {
     await expect(page.getByRole("button", { name: "重新扫描" }).first()).toBeVisible();
   });
 
-  test("says no trade instead of inventing a symbol", async ({ page }) => {
+  test("does not invent a symbol when scanning is halted", async ({ page }) => {
     await mockApi(
       page,
       entryNowResult({
-        status: "NO_TRADE",
+        status: "MARKET_HALT",
         symbol: null,
         baseAsset: null,
         price: null,
@@ -173,20 +176,18 @@ test.describe("home", () => {
     );
     await page.goto("/");
 
-    // "今天不出手" also appears in the hero copy and the status pill, so scope to
-    // the card heading rather than matching any occurrence on the page.
-    await expect(page.getByRole("heading", { name: "今天不出手" })).toBeVisible();
-    await expect(page.getByText("为什么不出手")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "市场停扫" })).toBeVisible();
+    await expect(page.getByText("本次扫描没有标的达到 5M USDT 的 24 小时成交额下限")).toBeVisible();
     await expect(page.getByText("成交额下限")).toBeVisible();
     // The empty state must not fall back to a candidate card.
-    await expect(page.getByRole("button", { name: "开始追踪" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "打开 Binance" })).toHaveCount(0);
   });
 
   test("shows the wait-for-pullback state for a stretched but healthy name", async ({ page }) => {
     await mockApi(
       page,
       entryNowResult({
-        status: "WAIT_PULLBACK",
+        status: "BUY_ON_PULLBACK",
         score: 76,
         reasons: ["15m RSI 偏高，等回踩 EMA21 更合适"],
       }),
@@ -195,7 +196,7 @@ test.describe("home", () => {
 
     await expect(page.getByText("76", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("回踩", { exact: false }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "开始追踪" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "打开 Binance" })).toHaveCount(1);
   });
 
   test("renders without a React error on a detail payload missing optional fields", async ({

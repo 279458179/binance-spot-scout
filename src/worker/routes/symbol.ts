@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { INTERVALS, SCAN_CONFIG } from "@/config/strategy";
 import { spreadPct } from "@/lib/binance";
 import { buildIntervalMetrics } from "@/lib/indicators/metrics";
+import { filterClosedKlines } from "@/lib/market/candles";
 import type { SymbolDetail } from "@/shared/types";
 import {
   bestPattern,
@@ -14,6 +15,7 @@ import type { Env } from "../env";
 import { resolveBtcRegime } from "../services/btc-regime";
 import { createMarketClient } from "../services/market-client";
 import { buildApiError } from "./api-error";
+import { rateLimit } from "@/lib/rate-limit";
 
 /** Symbols accepted by the detail route, e.g. BTCUSDT. */
 const SYMBOL_PATTERN = /^[A-Z0-9]+USDT$/;
@@ -50,6 +52,11 @@ export const symbolRoute = new Hono<{ Bindings: Env }>();
 
 /** Returns the full single-symbol analysis bundle without requesting the whole market. */
 symbolRoute.get("/:symbol", async (c) => {
+  const ip = c.req.header("cf-connecting-ip") ?? "anonymous";
+  if (!rateLimit("symbol", ip, 60, 60_000)) {
+    return c.json(buildApiError("INVALID_REQUEST", "请求太频繁了，缓一小会儿再试"), 429);
+  }
+
   const raw = c.req.param("symbol");
   if (raw !== raw.toUpperCase() || !SYMBOL_PATTERN.test(raw)) {
     return c.json(
@@ -70,21 +77,26 @@ symbolRoute.get("/:symbol", async (c) => {
     resolveBtcRegime(c.env.SCAN_CACHE, c.env.BINANCE_BASE_URLS),
   ]);
 
-  const metrics5m = buildIntervalMetrics(INTERVALS.confirmation, klines5m);
-  const metrics15m = buildIntervalMetrics(INTERVALS.primary, klines15m);
-  const metrics1h = buildIntervalMetrics(INTERVALS.trend, klines1h);
-  const metrics4h = buildIntervalMetrics(INTERVALS.macro, klines4h);
+  const closed5m = filterClosedKlines(klines5m, now);
+  const closed15m = filterClosedKlines(klines15m, now);
+  const closed1h = filterClosedKlines(klines1h, now);
+  const closed4h = filterClosedKlines(klines4h, now);
+
+  const metrics5m = buildIntervalMetrics(INTERVALS.confirmation, closed5m);
+  const metrics15m = buildIntervalMetrics(INTERVALS.primary, closed15m);
+  const metrics1h = buildIntervalMetrics(INTERVALS.trend, closed1h);
+  const metrics4h = buildIntervalMetrics(INTERVALS.macro, closed4h);
 
   const ticker = tickers[0] ?? null;
   const book = books[0] ?? null;
-  const supportResistance = detectSupportResistance(klines15m);
+  const supportResistance = detectSupportResistance(closed15m);
   const patterns = metrics15m && metrics1h ? detectPatterns(metrics1h, metrics15m) : [];
   const pattern = bestPattern(patterns);
 
   const measuredSpread = book ? spreadPct(book) : null;
   const spread = measuredSpread !== null && Number.isFinite(measuredSpread) ? measuredSpread : null;
 
-  const lastPrimary = klines15m[klines15m.length - 1];
+  const lastPrimary = closed15m[closed15m.length - 1];
   const quoteVolume24h = ticker?.quoteVolume ?? 0;
 
   let score: ReturnType<typeof scoreCandidate> | null = null;
@@ -105,10 +117,9 @@ symbolRoute.get("/:symbol", async (c) => {
   const riskGate = evaluateRiskGate({
     metrics15m,
     ticker,
-    book,
     quoteVolume24h,
     spreadPct: spread,
-    btcDropPct1h: dropPct1h(klines1h),
+    btcDropPct1h: dropPct1h(closed1h),
     marketRegime: regime.regime,
     dataTimestamp: lastPrimary?.closeTime ?? now,
     now,

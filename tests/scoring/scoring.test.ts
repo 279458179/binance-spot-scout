@@ -111,19 +111,19 @@ function penaltyPoints(overrides: {
 }
 
 describe("scoreCandidate — healthy baseline", () => {
-  it("walks the textbook setup through every bucket to 87/100", () => {
+  it("walks the textbook setup through every bucket to 93/100", () => {
     const score = scoreCandidate(makeScoreInput());
 
     expect(score).toEqual({
       trend: 25,
-      momentum: 14,
+      momentum: 20,
       volume: 13,
       entry: 15,
       liquidity: 10,
       riskReward: 10,
       market: 0,
       penalty: 0,
-      total: 87,
+      total: 93,
     });
   });
 
@@ -193,12 +193,12 @@ describe("momentum bucket (20 pts)", () => {
   it("maps the RSI curve to its inclusive bands", () => {
     const cases: Array<[number, number]> = [
       [54.99, 0],
-      [55, 8],
-      [63.99, 8],
-      [64, 5],
-      [69.99, 5],
-      [70, 1],
-      [74.99, 1],
+      [55, 14],
+      [63.99, 14],
+      [64, 10],
+      [69.99, 10],
+      [70, 4],
+      [74.99, 4],
       [75, 0],
       [85, 0],
     ];
@@ -209,16 +209,16 @@ describe("momentum bucket (20 pts)", () => {
   });
 
   it("adds 4 for a positive histogram and 2 more when it expands", () => {
-    expect(momentumPoints({ rsi14: 58, macdHistogram: 0, macdHistogramPrev: 0 })).toBe(8);
-    expect(momentumPoints({ rsi14: 58, macdHistogram: 0.2, macdHistogramPrev: 0.2 })).toBe(12);
-    expect(momentumPoints({ rsi14: 58, macdHistogram: 0.2, macdHistogramPrev: 0.1 })).toBe(14);
-    expect(momentumPoints({ rsi14: 58, macdHistogram: -0.2, macdHistogramPrev: -0.3 })).toBe(8);
+    expect(momentumPoints({ rsi14: 58, macdHistogram: 0, macdHistogramPrev: 0 })).toBe(14);
+    expect(momentumPoints({ rsi14: 58, macdHistogram: 0.2, macdHistogramPrev: 0.2 })).toBe(18);
+    expect(momentumPoints({ rsi14: 58, macdHistogram: 0.2, macdHistogramPrev: 0.1 })).toBe(20);
+    expect(momentumPoints({ rsi14: 58, macdHistogram: -0.2, macdHistogramPrev: -0.3 })).toBe(14);
   });
 
   it("skips MACD entirely once price is more than 1.5 ATR from EMA21", () => {
-    expect(momentumPoints({ rsi14: 58, distanceFromEma21Atr: 1.5 })).toBe(14);
-    expect(momentumPoints({ rsi14: 58, distanceFromEma21Atr: 1.51 })).toBe(8);
-    expect(momentumPoints({ rsi14: 58, distanceFromEma21Atr: -2 })).toBe(8);
+    expect(momentumPoints({ rsi14: 58, distanceFromEma21Atr: 1.5 })).toBe(20);
+    expect(momentumPoints({ rsi14: 58, distanceFromEma21Atr: 1.51 })).toBe(14);
+    expect(momentumPoints({ rsi14: 58, distanceFromEma21Atr: -2 })).toBe(14);
   });
 
   it("stays inside the 20-point cap", () => {
@@ -363,10 +363,10 @@ describe("risk/reward bucket (10 pts)", () => {
 });
 
 describe("penalties", () => {
-  it("charges 15 for an extreme RSI and 8 for merely overbought", () => {
+  it("charges 15 for an extreme RSI and 10 for merely overbought", () => {
     expect(penaltyPoints({ primary: { rsi14: 82 } })).toBe(15);
-    expect(penaltyPoints({ primary: { rsi14: 81.9 } })).toBe(8);
-    expect(penaltyPoints({ primary: { rsi14: 75.1 } })).toBe(8);
+    expect(penaltyPoints({ primary: { rsi14: 81.9 } })).toBe(10);
+    expect(penaltyPoints({ primary: { rsi14: 75.1 } })).toBe(10);
     expect(penaltyPoints({ primary: { rsi14: 75 } })).toBe(0);
   });
 
@@ -414,16 +414,16 @@ describe("market regime and total", () => {
     const riskOff = scoreCandidate(makeScoreInput({ marketRegimePoints: -5 }));
 
     expect(riskOn.market).toBe(5);
-    expect(riskOn.total).toBe(92);
+    expect(riskOn.total).toBe(98);
     expect(riskOn.trend).toBe(25);
     expect(riskOff.market).toBe(-5);
-    expect(riskOff.total).toBe(82);
+    expect(riskOff.total).toBe(88);
   });
 
   it("clamps the regime contribution to +/-5", () => {
     expect(scoreCandidate(makeScoreInput({ marketRegimePoints: 12 })).market).toBe(5);
     expect(scoreCandidate(makeScoreInput({ marketRegimePoints: -12 })).market).toBe(-5);
-    expect(scoreCandidate(makeScoreInput({ marketRegimePoints: 12 })).total).toBe(92);
+    expect(scoreCandidate(makeScoreInput({ marketRegimePoints: 12 })).total).toBe(98);
   });
 
   it("rounds the total to two decimals", () => {
@@ -432,7 +432,7 @@ describe("market regime and total", () => {
     );
 
     expect(score.riskReward).toBe(5.2);
-    expect(score.total).toBe(82.2);
+    expect(score.total).toBe(88.2);
   });
 
   it("never lets a penalty push the total below 0", () => {
@@ -459,7 +459,7 @@ describe("market regime and total", () => {
     expect(score.total).toBe(0);
   });
 
-  it("tops out at 94 when every reachable point is awarded", () => {
+  it("reaches a perfect 100 when every bucket is healthy", () => {
     const score = scoreCandidate(
       makeScoreInput({
         primary: makeMetrics({ volumeRatio: 3, rsi14: 58 }),
@@ -467,8 +467,8 @@ describe("market regime and total", () => {
       }),
     );
 
-    expect(score.total).toBe(25 + 14 + 15 + 15 + 10 + 10 + 5);
-    expect(score.total).toBeLessThan(100);
+    expect(score.momentum).toBe(20);
+    expect(score.total).toBe(100);
   });
 
   it("stays in the 0-100 range for a spread of adversarial inputs", () => {

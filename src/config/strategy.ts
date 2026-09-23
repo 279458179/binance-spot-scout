@@ -18,7 +18,7 @@ export const INTERVALS = {
   macro: "4h",
 } as const;
 
-export const STRATEGY_VERSION = "1.0.0";
+export const STRATEGY_VERSION = "1.1.0";
 
 export const SCAN_CONFIG = {
   /** Take-profit target used for every trade plan. */
@@ -38,14 +38,14 @@ export const SCAN_CONFIG = {
   rsiExtreme: 82,
   /** Distance from EMA21 (in ATR) beyond which we stop chasing. */
   maxDistanceFromEma21Atr: 2.5,
-  /** Score required for ENTRY_NOW. */
-  entryScore: 78,
-  /** Score required to stay on the watchlist (WAIT_PULLBACK). */
-  watchScore: 70,
+  /** Opportunity score required for BUY_NOW. */
+  buyNowScore: 79,
+  /** Opportunity score required for BUY_ON_PULLBACK. */
+  pullbackScore: 65,
   /** Symbols that survive liquidity filtering and reach the 15m/1h scan. */
   universeSize: 120,
   /** Symbols that reach the expensive 5m/4h + risk-gate stage. */
-  deepScanSize: 15,
+  deepScanSize: 30,
   /** Suggestions older than this are considered stale. */
   dataFreshnessMs: 5 * 60 * 1000,
   /** A manual scan inside this window reuses the cached payload. */
@@ -67,7 +67,7 @@ export const SCORE_WEIGHTS = {
 
 /** Penalty table, all values are points *removed*. */
 export const PENALTIES = {
-  rsiOverbought: 8,
+  rsiOverbought: 10,
   rsiExtreme: 15,
   distanceEma21Wide: 6,
   distanceEma21Extreme: 12,
@@ -108,9 +108,9 @@ export const VOLUME_RATIO_BANDS: ReadonlyArray<{ min: number; points: number }> 
 
 /** RSI scoring curve used by the momentum bucket. */
 export const RSI_BANDS: ReadonlyArray<{ min: number; max: number; points: number }> = [
-  { min: 55, max: 64, points: 8 },
-  { min: 64, max: 70, points: 5 },
-  { min: 70, max: 75, points: 1 },
+  { min: 55, max: 64, points: 14 },
+  { min: 64, max: 70, points: 10 },
+  { min: 70, max: 75, points: 4 },
 ];
 
 /** BTC regime tuning. */
@@ -194,4 +194,3 @@ export const WARNING_CODES = {
 
 /** Bumped whenever the scoring rules change so stored scans stay comparable. */
 export const SCORING_VERSION = STRATEGY_VERSION;
-

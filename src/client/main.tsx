@@ -9,6 +9,7 @@ import { AboutPage } from "@/client/pages/AboutPage";
 import { DebugPage } from "@/client/pages/DebugPage";
 import { HistoryPage } from "@/client/pages/HistoryPage";
 import { HomePage } from "@/client/pages/HomePage";
+import { ResearchPage } from "@/client/pages/ResearchPage";
 
 /** Fallback screen for unknown routes. */
 function NotFoundPage() {
@@ -43,6 +44,7 @@ createRoot(container).render(
           <Route element={<Layout />}>
             <Route index element={<HomePage />} />
             <Route path="history" element={<HistoryPage />} />
+            <Route path="research" element={<ResearchPage />} />
             <Route path="about" element={<AboutPage />} />
             <Route path="debug" element={<DebugPage />} />
             <Route path="*" element={<NotFoundPage />} />
