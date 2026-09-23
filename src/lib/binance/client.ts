@@ -210,6 +210,41 @@ export class BinanceMarketClient {
     return results.flat();
   }
 
+  /** Current order-book depth for one symbol. */
+  async depth(symbol: string, limit = 100): Promise<unknown> {
+    const safeLimit = [5, 10, 20, 50, 100, 500, 1000, 5000].includes(limit)
+      ? limit
+      : 100;
+    return this.request(
+      "/api/v3/depth",
+      () => new URLSearchParams({ symbol, limit: String(safeLimit) }).toString(),
+      (payload) => payload,
+      `depth:${symbol}`,
+    );
+  }
+
+  /** Most recent public trades for one symbol. */
+  async trades(symbol: string, limit = 100): Promise<unknown> {
+    const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 1_000));
+    return this.request(
+      "/api/v3/trades",
+      () => new URLSearchParams({ symbol, limit: String(safeLimit) }).toString(),
+      (payload) => payload,
+      `trades:${symbol}`,
+    );
+  }
+
+  /** Binance's trade-price average for the preceding `mins` minutes. */
+  async avgPrice(symbol: string, mins = 5): Promise<unknown> {
+    const safeMins = Math.max(1, Math.min(Math.trunc(mins), 60));
+    return this.request(
+      "/api/v3/avgPrice",
+      () => new URLSearchParams({ symbol, mins: String(safeMins) }).toString(),
+      (payload) => payload,
+      `avgPrice:${symbol}`,
+    );
+  }
+
   /**
    * Recent candles for one symbol/interval, oldest first (as Binance sends).
    *

@@ -14,6 +14,7 @@ import { buildApiError } from "./routes/api-error";
 import { healthRoute } from "./routes/health";
 import { historyRoute } from "./routes/history";
 import { latestRoute } from "./routes/latest";
+import { mcpRoute } from "./routes/mcp";
 import { researchRoute } from "./routes/research";
 import { scanRoute } from "./routes/scan";
 import { symbolRoute } from "./routes/symbol";
@@ -61,6 +62,7 @@ app.route("/api/scan", scanRoute);
 app.route("/api/history", historyRoute);
 app.route("/api/research", researchRoute);
 app.route("/api/symbol", symbolRoute);
+app.route("/api/mcp", mcpRoute);
 
 app.notFound((c) => c.json(buildApiError("INVALID_REQUEST", "接口不存在"), 404));
 
