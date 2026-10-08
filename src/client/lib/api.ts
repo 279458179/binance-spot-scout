@@ -15,6 +15,7 @@
  * though the shared `ScanPayload` type declares it as required.
  */
 
+import type { GridAnalysis, GridMarket } from "@/shared/grid";
 import type {
   ApiError,
   HealthPayload,
@@ -165,4 +166,10 @@ export function fetchSymbolDetail(symbol: string): Promise<SymbolDetail> {
 /** `GET /api/health` — liveness probe used by the debug page. */
 export function fetchHealth(): Promise<HealthPayload> {
   return request<HealthPayload>("/api/health");
+}
+
+/** Read-only public grid research endpoint. */
+export function fetchGridAnalysis(symbol: string, market: GridMarket, budget: number): Promise<{ ok: true; analysis: GridAnalysis }> {
+  const query = new URLSearchParams({ market, budget: String(budget) });
+  return request<{ ok: true; analysis: GridAnalysis }>("/api/grid/" + encodeURIComponent(symbol) + "?" + query);
 }

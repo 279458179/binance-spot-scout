@@ -8,6 +8,7 @@ import { Layout } from "@/client/components/Layout";
 import { AboutPage } from "@/client/pages/AboutPage";
 import { DebugPage } from "@/client/pages/DebugPage";
 import { HistoryPage } from "@/client/pages/HistoryPage";
+import { GridPage } from "@/client/pages/GridPage";
 import { HomePage } from "@/client/pages/HomePage";
 import { ResearchPage } from "@/client/pages/ResearchPage";
 
@@ -44,6 +45,7 @@ createRoot(container).render(
           <Route element={<Layout />}>
             <Route index element={<HomePage />} />
             <Route path="history" element={<HistoryPage />} />
+            <Route path="grid" element={<GridPage />} />
             <Route path="research" element={<ResearchPage />} />
             <Route path="about" element={<AboutPage />} />
             <Route path="debug" element={<DebugPage />} />

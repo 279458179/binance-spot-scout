@@ -18,4 +18,7 @@ export interface Env {
    * Unset means "use the shipped list" (`src/config/api.ts`).
    */
   BINANCE_BASE_URLS?: string;
+  /** Optional notification-only Telegram credentials. */
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
 }
