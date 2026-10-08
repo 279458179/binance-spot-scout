@@ -75,27 +75,27 @@ export function GridPage(): ReactNode {
     <div className="panel space-y-5 p-5 sm:p-7">
       <div className="flex flex-wrap gap-2" role="group" aria-label="选择币种">
         {SYMBOLS.map((value) => <button type="button" key={value} aria-pressed={symbol === value}
-          onClick={() => setSymbol(value)}
+          onClick={() => { setAnalysis(null); setSymbol(value); }}
           className={BUTTON + (symbol === value ? " bg-[var(--text-primary)] text-white" : " bg-[var(--bg-secondary)] text-[var(--text-secondary)]")}>
           {value.replace("USDT", "")}</button>)}
       </div>
       <div className="flex flex-wrap items-end gap-4">
         <div className="flex flex-wrap gap-2" role="group" aria-label="选择市场">
           {(["spot", "futures"] as const).map((value) =>
-            <button key={value} type="button" aria-pressed={market === value} onClick={() => setMarket(value)}
+            <button key={value} type="button" aria-pressed={market === value} onClick={() => { setAnalysis(null); setMarket(value); }}
               className={BUTTON + (market === value ? " bg-[rgba(0,113,227,.1)] text-[var(--brand-primary)]" : " bg-[var(--bg-secondary)] text-[var(--text-secondary)]")}>
               {value === "spot" ? "现货 / 现货网格" : "U 本位合约 / 合约网格"}</button>)}
         </div>
         <label className="ml-auto flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
           研究预算（USDT）
           <input aria-label="研究预算（USDT）" value={budgetText}
-            onChange={(event) => setBudgetText(event.target.value)}
+            onChange={(event) => { setAnalysis(null); setBudgetText(event.target.value); }}
             inputMode="decimal" className="w-36 rounded-xl border border-[var(--border-soft)] bg-white px-3 py-2.5 text-sm text-[var(--text-primary)]" />
         </label>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--divider)] pt-4">
         <span className="text-xs text-[var(--text-tertiary)]">页面打开时每 60 秒自动刷新 · 不连接交易账户</span>
-        <button type="button" disabled={loading || !valid} onClick={() => setRefreshKey((v) => v + 1)}
+        <button type="button" disabled={loading || !valid} onClick={() => { setAnalysis(null); setRefreshKey((v) => v + 1); }}
           className="rounded-full bg-[var(--brand-primary)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
           {loading ? "分析中…" : "刷新行情"}</button>
       </div>
@@ -118,7 +118,7 @@ export function GridPage(): ReactNode {
         <Stat label="1h / 4h ADX" value={analysis.adx1h === null ? "—" : analysis.adx1h + " / " + analysis.adx4h} />
         <Stat label="1h ATR 波动" value={pct(analysis.atr1hPct)} />
       </dl>
-      {market === "futures" && <p className="text-sm text-[var(--text-secondary)]">最近公开资金费率：{pct(analysis.fundingRatePct)}（不代表后续费率）</p>}
+      {market === "futures" && <p className="text-sm text-[var(--text-secondary)]">最近公开资金费率：{analysis.fundingRatePct === null ? "—" : analysis.fundingRatePct.toFixed(4) + "%"}（不代表后续费率）</p>}
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">判定依据</h3>
         <ul className="list-inside list-disc space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
