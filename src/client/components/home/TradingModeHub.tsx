@@ -95,7 +95,7 @@ export function TradingModeHub(): ReactNode {
 
   return <section className="space-y-5" aria-label="交易策略工作台">
     <div className="relative overflow-hidden rounded-[28px] border border-[var(--border-soft)] bg-white px-6 pb-7 pt-8 shadow-[0_12px_50px_rgba(15,23,42,.045)] sm:px-9 sm:pt-10">
-      <div className="pointer-events-none absolute -right-16 -top-28 size-72 rounded-full bg-[radial-gradient(circle,rgba(0,113,227,.09),transparent_67%)]" />
+      <div className="pointer-events-none absolute right-0 top-0 size-48 rounded-full bg-[radial-gradient(circle,rgba(0,113,227,.09),transparent_67%)]" />
       <div className="relative space-y-3">
         <p className="text-xs font-semibold tracking-[.19em] text-[var(--brand-primary)]">SPOT SCOUT / STRATEGY HUB</p>
         <h2 className="max-w-3xl text-[clamp(1.9rem,4.3vw,2.7rem)] font-semibold leading-[1.2] tracking-[-.048em]">一次看懂行情，再决定是否交易。</h2>

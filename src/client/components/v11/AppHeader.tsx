@@ -24,7 +24,7 @@ export function AppHeader(): ReactNode {
           </span>
         </NavLink>
         <nav className="ml-auto flex items-center gap-1 overflow-x-auto" aria-label="主导航">
-          {[["/", "策略中心"], ["/grid", "网格雷达"], ["/history", "历史"], ["/research", "研究"]].map(([to, label]) => (
+          {[["/", "首页"], ["/grid", "网格雷达"], ["/history", "历史"], ["/research", "研究"]].map(([to, label]) => (
             <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => navClass(isActive)}>
               {label}
             </NavLink>
