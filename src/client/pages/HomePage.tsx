@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { NoTradeCard } from "@/client/components/NoTradeCard";
+import { TradingModeHub } from "@/client/components/home/TradingModeHub";
 import { ResultCard } from "@/client/components/ResultCard";
 import { ScanAgainButton } from "@/client/components/v11/ScanAgainButton";
 import { CandidateHero } from "@/client/components/v11/CandidateHero";
@@ -45,6 +46,15 @@ export function HomePage(): ReactNode {
 
   return (
       <div className="space-y-10">
+      <TradingModeHub />
+      <section id="spot-scout" className="scroll-mt-24 space-y-5">
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold tracking-[.16em] text-[var(--brand-primary)]">SPOT SCOUT</p>
+            <h2 className="mt-1 text-[1.6rem] font-semibold tracking-[-.03em]">现货单币精选</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">保留原来的 Top 1 选币与风控；网格策略在上方独立入口。</p>
+          </div>
+        </header>
       {result !== null ? <MarketContext regime={result.marketRegime} /> : null}
 
       {firstPaint ? (
@@ -97,6 +107,7 @@ export function HomePage(): ReactNode {
         loading={busy}
         disabled={latest.loading && result === null}
       />
+      </section>
     </div>
   );
 }

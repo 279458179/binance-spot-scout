@@ -35,6 +35,8 @@ Spot Scout 是一个面向 Binance USDT 现货的 1 日内中短线扫描器。�
 
 ## Features
 
+- **首页策略工作台** — 首页直接显示现货精选、合约行情观察、现货网格、合约网格四个入口，同时加载 BTC 现货/合约实时公开数据快照；可直接跳转网格分析，无需寻找二级导航。
+
 - **一次只给一个答案** — `BUY_NOW` / `BUY_ON_PULLBACK` / `WATCH_ONLY` / `MARKET_HALT` 四态决策。
 - **Ranking-First 漏斗** — 全市场 → 流动性 Universe → 4h/1h/15m/5m → 风险与机会分 → Top1。
 - **相对机会分** — 在同一轮市场里比较结构、位置、动量与软风险，可执行候选不会被高分但不可执行的标的挡住。
@@ -206,3 +208,5 @@ V1 只做 Binance USDT 现货。行情站点可通过 `BINANCE_BASE_URLS` 指向
 - Telegram 可选：使用 Cloudflare Worker secrets 配置 TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID，不要提交到 GitHub。缺少这些 secrets 则不发送通知。
 - 不需要、也不接受用户交易 API Key；不发出真实订单，不通过代理绕开地区限制。
 - 当前只实现启发式研究候选，未完成订单级历史回测。单格理论成本后收益不等于真实整体收益，不包含浮亏、资金费、爆仓、委托限制与排队。
+
+> 部署说明：GitHub CI 的成功只代表代码通过检查，不代表 Cloudflare 站点已经发布。请在 Cloudflare Workers Builds 核实 `main` 自动部署状态或手动执行 `npm run deploy`，然后检查 `/grid` 和首页策略工作台。

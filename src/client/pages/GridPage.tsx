@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { describeError, fetchGridAnalysis } from "@/client/lib/api";
 import type { GridAnalysis, GridMarket } from "@/shared/grid";
 
@@ -18,8 +19,19 @@ function Stat({ label, value }: { label: string; value: string }): ReactNode {
 }
 
 export function GridPage(): ReactNode {
-  const [symbol, setSymbol] = useState<(typeof SYMBOLS)[number]>("BTCUSDT");
-  const [market, setMarket] = useState<GridMarket>("spot");
+  const [query, setQuery] = useSearchParams();
+  const symbol = SYMBOLS.find((name) => name === query.get("symbol")) ?? "BTCUSDT";
+  const market: GridMarket = query.get("market") === "futures" ? "futures" : "spot";
+  const trendFocus = query.get("focus") === "trend";
+  const updateQuery = (key: string, value: string) => {
+    setAnalysis(null);
+    setQuery((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set(key, value);
+      if (key === "market") next.delete("focus");
+      return next;
+    });
+  };
   const [budgetText, setBudgetText] = useState("50");
   const [refreshKey, setRefreshKey] = useState(0);
   const [analysis, setAnalysis] = useState<GridAnalysis | null>(null);
@@ -68,21 +80,21 @@ export function GridPage(): ReactNode {
 
   return <section className="space-y-7" aria-label="网格交易机会雷达">
     <header className="space-y-3">
-      <span className="inline-flex rounded-full bg-[rgba(0,113,227,.08)] px-3 py-1 text-xs font-semibold text-[var(--brand-primary)]">Grid Radar · 只读研究</span>
-      <h1 className="text-[clamp(1.9rem,5vw,3rem)] font-semibold tracking-[-.04em]">网格机会，不必硬凑。</h1>
+      <span className="inline-flex rounded-full bg-[rgba(0,113,227,.08)] px-3 py-1 text-xs font-semibold text-[var(--brand-primary)]">{trendFocus ? "Futures Outlook · 只读研究" : "Grid Radar · 只读研究"}</span>
+      <h1 className="text-[clamp(1.9rem,5vw,3rem)] font-semibold tracking-[-.04em]">{trendFocus ? "合约趋势与风险观察。" : "网格机会，不必硬凑。"}</h1>
       <p className="max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">现货和 U 本位合约分开分析。低趋势震荡行情才研究网格，上涨、下跌趋势明显时宁可观望，也不强行推荐开仓。</p>
     </header>
     <div className="panel space-y-5 p-5 sm:p-7">
       <div className="flex flex-wrap gap-2" role="group" aria-label="选择币种">
         {SYMBOLS.map((value) => <button type="button" key={value} aria-pressed={symbol === value}
-          onClick={() => { setAnalysis(null); setSymbol(value); }}
+          onClick={() => updateQuery("symbol", value)}
           className={BUTTON + (symbol === value ? " bg-[var(--text-primary)] text-white" : " bg-[var(--bg-secondary)] text-[var(--text-secondary)]")}>
           {value.replace("USDT", "")}</button>)}
       </div>
       <div className="flex flex-wrap items-end gap-4">
         <div className="flex flex-wrap gap-2" role="group" aria-label="选择市场">
           {(["spot", "futures"] as const).map((value) =>
-            <button key={value} type="button" aria-pressed={market === value} onClick={() => { setAnalysis(null); setMarket(value); }}
+            <button key={value} type="button" aria-pressed={market === value} onClick={() => updateQuery("market", value)}
               className={BUTTON + (market === value ? " bg-[rgba(0,113,227,.1)] text-[var(--brand-primary)]" : " bg-[var(--bg-secondary)] text-[var(--text-secondary)]")}>
               {value === "spot" ? "现货 / 现货网格" : "U 本位合约 / 合约网格"}</button>)}
         </div>
@@ -125,7 +137,8 @@ export function GridPage(): ReactNode {
           {analysis.reasons.map((reason) => <li key={reason}>{reason}</li>)}
         </ul>
       </section>
-      {analysis.plan !== null && <section className="rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--bg-secondary)] p-5">
+      {trendFocus && analysis.decision === "CANDIDATE" && <p className="rounded-2xl bg-[var(--neutral-bg)] p-4 text-sm text-[var(--text-secondary)]">本轮数据更接近震荡行情，不构成方向性合约开仓信号。可切换合约网格研究模式查看参数。</p>}
+      {analysis.plan !== null && !trendFocus && <section className="rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--bg-secondary)] p-5">
         <h3 className="mb-4 font-semibold">研究参数 · 非即时下单指令</h3>
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <Stat label="区间下限 USDT" value={money(analysis.plan.lower)} />
