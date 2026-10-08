@@ -194,3 +194,15 @@ V1 只做 Binance USDT 现货。行情站点可通过 `BINANCE_BASE_URLS` 指向
 ## License
 
 [MIT](LICENSE)
+
+
+## Grid Radar（只读网格交易机会雷达）
+
+- 进入网站 /grid 查看 BTC / ETH / SOL 的现货网格与 U 本位合约中性网格研究建议。
+- 现货仅使用币安国际站公开数据，合约仅使用币安 USD-M 官方公开数据；不以币安美国站数据充当全球合约。
+- 用已收盘的 1h/4h K 线分析 ADX、ATR、EMA、价格区间、流动性及资金费；仅在震荡且交易成本通过过滤时生成格数和上下限。
+- 明显趋势返回 WATCH 或 AVOID，数据过期/异常不生成参数。
+- 沿用 Cloudflare Cron；每隔约 15 分钟最多扫描一次（3 币种 × 2 市场），可选 Telegram 候选通知，重复消息 3 小时冷却。
+- Telegram 可选：使用 Cloudflare Worker secrets 配置 TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID，不要提交到 GitHub。缺少这些 secrets 则不发送通知。
+- 不需要、也不接受用户交易 API Key；不发出真实订单，不通过代理绕开地区限制。
+- 当前只实现启发式研究候选，未完成订单级历史回测。单格理论成本后收益不等于真实整体收益，不包含浮亏、资金费、爆仓、委托限制与排队。
